@@ -1,0 +1,69 @@
+{
+  "_comment": "Shared policy for this repository. Safe to commit. Machine-specific choices (active profile, GCP project, Ollama address) belong in shunt.local.json, which is not committed. See shunt.local.example.json.",
+  "writePaths": [
+    "tests/**",
+    "**/tests/**",
+    "**/test_*.py",
+    "**/*_test.py",
+    "**/conftest.py",
+    "**/factories.py",
+    "**/fixtures/**"
+  ],
+  "_editPaths": "Globs delegate_edit may modify. Defaults to writePaths. Widen deliberately: this lets a worker change code that already works.",
+  "editPaths": [
+    "tests/**",
+    "**/tests/**",
+    "**/test_*.py",
+    "**/*_test.py",
+    "**/conftest.py",
+    "**/factories.py",
+    "**/fixtures/**"
+  ],
+  "_economics": "Inputs to the delegation break-even. Defaults are measured over 60 real Opus sessions; the two worth tuning are assumedConversationTokens and remainingTurns, which describe how you work rather than what things cost. Raising either changes the floor: longer conversations make delegation dearer, longer-lived context makes it cheaper.",
+  "economics": {
+    "assumedConversationTokens": 25000,
+    "remainingTurns": 3
+  },
+  "bulkExempt": [
+    "ollama",
+    "lmstudio",
+    "llamacpp",
+    "local",
+    "google-vertex/gemini-2.5-flash",
+    "google-vertex/gemini-2.5-flash-lite"
+  ],
+  "profiles": {
+    "gemini-flash": {
+      "kind": "vertex",
+      "location": "global",
+      "model": "gemini-2.5-flash",
+      "contextTokens": 1048576,
+      "maxCallChars": 400000,
+      "costPerMillionInput": 0.3
+    },
+    "gemini-flash-lite": {
+      "kind": "vertex",
+      "location": "global",
+      "model": "gemini-2.5-flash-lite",
+      "contextTokens": 1048576,
+      "maxCallChars": 400000,
+      "costPerMillionInput": 0.1
+    },
+    "local-4090": {
+      "kind": "ollama",
+      "model": "qwen3-coder-shunt:30b",
+      "contextTokens": 32768,
+      "costPerMillionInput": 0,
+      "keepAlive": "30m"
+    },
+    "zen": {
+      "kind": "openai-compatible",
+      "baseURL": "https://opencode.ai/zen/v1",
+      "model": "deepseek-v4-flash",
+      "apiKeyEnv": "OPENCODE_API_KEY",
+      "contextTokens": 1000000,
+      "maxCallChars": 400000,
+      "costPerMillionInput": 0.14
+    }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "name": "opencode-shunt-local",
+  "private": true,
+  "dependencies": {
+    "@opencode-ai/plugin": "1.18.29"
+  }
+}

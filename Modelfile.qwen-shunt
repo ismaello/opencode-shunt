@@ -1,0 +1,16 @@
+# Qwen3-Coder variant tuned for the shunt workload:
+# deterministic extraction and summarisation, not creative coding.
+# The base model is left untouched.
+FROM qwen3-coder:30b
+
+# 32k is the starting point. Measured against 24GB VRAM with ~18.5GB of weights,
+# this must keep PROCESSOR at 100% GPU in `ollama ps`.
+PARAMETER num_ctx 32768
+
+# Low temperature: we want the same answer for the same file every time.
+PARAMETER temperature 0.1
+PARAMETER top_p 0.8
+PARAMETER top_k 20
+
+# Guards against the repetition loops MoE models fall into on long inputs.
+PARAMETER repeat_penalty 1.05
