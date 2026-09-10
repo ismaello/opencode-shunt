@@ -1,0 +1,31 @@
+{
+  "_comment": "Shared policy for this repository: safe to commit, and meant to be. Run 'shunt config' to fill it in, which also writes shunt.local.json with the profiles for this machine. What belongs here is what the repository decides; what belongs there is what one computer happens to have.",
+
+  "_writePaths": "Files delegate_write may create. The default covers only tests, fixtures and scaffolding: code whose correctness a test run can judge, and whose being wrong does not quietly change what the product does. 'shunt config' replaces this with the conventions it finds in your repository.",
+  "writePaths": [
+    "tests/**",
+    "test/**",
+    "**/tests/**",
+    "**/fixtures/**"
+  ],
+
+  "_editPaths": "Files delegate_edit may modify. Defaults to writePaths. Widen this deliberately: it lets a worker model change code that already works and that people rely on.",
+
+  "_bulkExempt": "Sessions allowed to read freely, because they are cheap. Entries are a provider ('ollama') or a specific model ('google-vertex/gemini-2.5-flash'). This is the most important list in the system and the easiest to get wrong in both directions: leave a worker out and it cannot do its job, put your orchestrator in and the whole system silently stops working. 'shunt doctor' checks both.",
+  "bulkExempt": [
+    "ollama",
+    "lmstudio",
+    "llamacpp",
+    "local"
+  ],
+
+  "_economics": "Inputs to the point at which delegating pays for itself, computed in lib/economics.ts rather than fixed. The defaults come from sixty measured sessions; 'shunt config' replaces them with numbers read from your own OpenCode history. The two that matter describe how you work rather than what things cost: longer conversations make delegation dearer, longer-lived context makes it cheaper.",
+  "economics": {
+    "assumedConversationTokens": 25000,
+    "remainingTurns": 3
+  },
+
+  "_allowedProviders": "Optional whitelist of providers permitted to see this code, e.g. ['ollama'] for a repository that must not leave the machine. Enforced on the reader and the writer. NOT enforced on the orchestrator, whose model OpenCode chooses, so a cloud orchestrator still sees everything: choose a local one too if the restriction has to be real.",
+
+  "_profiles": "Worker profiles live in shunt.local.json, not here. They name local endpoints, project ids and hardware, none of which survive being cloned onto another machine."
+}

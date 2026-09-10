@@ -22,7 +22,9 @@ import pathlib
 import statistics
 import sys
 
-TELEMETRY = pathlib.Path.home() / ".local/share/opencode-shunt/telemetry.jsonl"
+from . import paths
+
+TELEMETRY = paths.telemetry_file()
 
 # Rough, and only used to put the char counts in familiar units. The saving
 # percentages never depend on it.
@@ -64,10 +66,10 @@ def summarise(label: str, pairs: list[tuple[int, int]], width: int = 22) -> floa
     return 100 * (total_before - total_after) / total_before
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--since", help="ISO timestamp in UTC, e.g. 2026-09-10; telemetry is stamped in UTC")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     rows = load(args.since)
 
     reads = [
@@ -208,6 +210,3 @@ def main() -> int:
 
     return 0
 
-
-if __name__ == "__main__":
-    raise SystemExit(main())

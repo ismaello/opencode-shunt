@@ -20,7 +20,7 @@ import {
   looksSecret,
   searchReplaceCost,
   stripFences,
-} from "../opencode/lib/guards.ts"
+} from "../lib/guards.ts"
 
 let failed = 0
 const ok = (name, condition, detail = "") => {

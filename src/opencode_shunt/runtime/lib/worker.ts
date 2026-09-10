@@ -72,13 +72,24 @@ export type ShuntConfig = {
   economics?: Partial<import("./economics").Economics>
 }
 
+/**
+ * Last-resort fallback, used only when no configuration exists at all.
+ *
+ * Ollama at its default address, because it is the one worker that needs no
+ * credentials and no account, so it is the only guess that can possibly work on
+ * a machine we know nothing about. If it is not running, every tool fails with a
+ * connection error naming this address, which is a far better outcome than
+ * silently sending someone's code to a cloud they never chose.
+ *
+ * Run `shunt config` and none of this applies.
+ */
 const DEFAULT_CONFIG: ShuntConfig = {
-  profile: "local-4090",
+  profile: "ollama-default",
   profiles: {
-    "local-4090": {
+    "ollama-default": {
       kind: "ollama",
       baseURL: "http://127.0.0.1:11434",
-      model: "qwen3-coder-shunt:30b",
+      model: "qwen3-coder:30b",
       contextTokens: 32768,
       costPerMillionInput: 0,
     },

@@ -37,8 +37,10 @@ import statistics
 import sys
 from datetime import datetime, timedelta, timezone
 
-DB = pathlib.Path.home() / ".local/share/opencode/opencode.db"
-TELEMETRY = pathlib.Path.home() / ".local/share/opencode-shunt/telemetry.jsonl"
+from . import paths
+
+DB = paths.opencode_db()
+TELEMETRY = paths.telemetry_file()
 
 # List prices per million tokens. Only used to turn token counts into a familiar
 # unit; every percentage in this report is computed from tokens, not from these.
@@ -138,7 +140,7 @@ def load_operations() -> tuple[dict[str, list[dict]], float]:
     return by_session, ratio
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -150,7 +152,7 @@ def main() -> int:
         type=float,
         help="override the measured ratio, to test how much the estimate depends on it",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     sessions = load_sessions()
     operations, measured = load_operations()
@@ -252,6 +254,3 @@ def main() -> int:
     )
     return 0
 
-
-if __name__ == "__main__":
-    raise SystemExit(main())

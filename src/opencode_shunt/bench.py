@@ -20,7 +20,9 @@ import subprocess
 import sys
 import time
 
-RESULTS = pathlib.Path.home() / ".local/share/opencode-shunt/benchmarks.jsonl"
+from . import paths
+
+RESULTS = paths.shunt_data() / "benchmarks.jsonl"
 MODEL = os.environ.get("BENCH_MODEL", "anthropic/claude-opus-4-8")
 
 
@@ -109,7 +111,7 @@ def run_once(repo: str, question: str, enforce: bool) -> dict:
     }
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("question", nargs="?", help="question to benchmark")
     parser.add_argument("--repo", required=False, help="repository to run in")
@@ -121,7 +123,7 @@ def main() -> int:
         default=1,
         help="runs per arm; the control arm varies by ~25%%, so use 3 or more to conclude anything",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.report:
         if not RESULTS.exists():
@@ -215,6 +217,3 @@ def main() -> int:
 
     return 0
 
-
-if __name__ == "__main__":
-    raise SystemExit(main())

@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "opencode-shunt"
+dynamic = ["version"]
+description = "Keep bulk work off your expensive model, in any OpenCode repository"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+keywords = ["opencode", "llm", "tokens", "cost", "claude", "gemini", "ollama"]
+classifiers = [
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Topic :: Software Development :: Code Generators",
+]
+
+# Deliberately none. Everything here is argparse, json, sqlite3 and pathlib, so
+# installing this can never break somebody's environment or fight their pins.
+dependencies = []
+
+[project.scripts]
+shunt = "opencode_shunt.cli:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.setuptools.dynamic]
+version = { attr = "opencode_shunt.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+# The TypeScript runtime is the product; Python is only how it gets installed
+# and measured. It has to travel inside the wheel.
+opencode_shunt = [
+  "runtime/*.json",
+  "runtime/**/*.ts",
+  "runtime/**/*.md",
+  "runtime/**/*.mjs",
+  "runtime/modelfiles/*",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

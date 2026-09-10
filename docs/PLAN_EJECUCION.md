@@ -1,8 +1,16 @@
 # Plan de ejecución: qué se construyó y cómo replicarlo
 
-Registro de la implementación real del sistema descrito en `PLAN_OPENCODE_QWEN_SHUNT(1).md`.
-Este documento sirve para dos cosas: entender por qué el sistema quedó como quedó, y
-volver a montarlo en otro proyecto o con otros modelos sin repetir la investigación.
+Registro de la implementación real. Sirve para dos cosas: entender por qué el
+sistema quedó como quedó, y volver a montarlo en otro proyecto o con otros
+modelos sin repetir la investigación.
+
+> **Nota de lectura.** Lo que aquí se describe paso a paso fue trabajo manual la
+> primera vez. Ahora lo hacen `shunt init` y `shunt config`, y el asistente
+> además *mide* de tu propio historial de OpenCode las dos cifras que aquí
+> aparecen fijadas a mano. Este documento se conserva porque el razonamiento
+> sigue valiendo: explica **por qué** cada decisión es la que es, incluidas las
+> que resultaron equivocadas y hubo que rehacer. Si vas a montar algo parecido
+> desde cero, esto es más útil que el README.
 
 **Fecha de ejecución:** 2026-09-09
 **Máquina:** Ubuntu, RTX 4090 (24.564 MiB)

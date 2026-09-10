@@ -10,7 +10,7 @@
  * Run: node --experimental-strip-types --no-warnings tests/economics.test.mjs
  */
 
-import { DEFAULT_ECONOMICS, assess, loadEconomics } from "../opencode/lib/economics.ts"
+import { DEFAULT_ECONOMICS, assess, loadEconomics } from "../lib/economics.ts"
 
 let failed = 0
 const ok = (name, condition, detail = "") => {

@@ -1,5 +1,5 @@
 ---
-description: Control arm for benchmarking. Plain Claude with no access to the local model, used to measure what the shunt saves. Not for normal use.
+description: Control arm for benchmarking. The orchestrator with no access to any worker, used to measure what the shunt saves. Not for normal use.
 mode: primary
 model: anthropic/claude-opus-4-8
 temperature: 0.1

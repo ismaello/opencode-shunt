@@ -3,6 +3,14 @@
 Guía de uso y funcionamiento. Explica qué hace el sistema, por qué, qué reglas
 aplica, y cómo comprobar que realmente ahorra.
 
+> **Instalación.** Todo lo que sigue se instala con tres órdenes:
+> `shunt init` deja el runtime en `.opencode/`, `shunt config` decide quién
+> orquesta, quién lee y quién escribe, y `shunt doctor` comprueba que funciona
+> de verdad. Ese último no es una formalidad: **este sistema falla siempre en
+> silencio y en la dirección caro**, así que una instalación rota y una sin usar
+> tienen exactamente el mismo aspecto. El README lo resume; este documento
+> explica el por qué.
+
 ---
 
 ## 1. El problema que resuelve

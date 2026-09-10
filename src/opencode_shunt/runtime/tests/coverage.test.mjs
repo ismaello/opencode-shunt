@@ -10,7 +10,7 @@
  * Run: node --experimental-strip-types --no-warnings tests/coverage.test.mjs
  */
 
-import { readCoverage } from "../opencode/lib/coverage.ts"
+import { readCoverage } from "../lib/coverage.ts"
 
 const files = ["src/a.py", "src/b.py", "src/c.py"]
 let failed = 0
