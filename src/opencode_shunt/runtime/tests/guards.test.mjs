@@ -11,13 +11,16 @@
  */
 
 import {
+  DEFAULT_EDIT_PATHS,
   DEFAULT_WRITE_PATHS,
   extractSymbols,
   globToRegExp,
   isAllowed,
+  isForbidden,
   leaksSecret,
   looksAbbreviated,
   looksSecret,
+  resolveInside,
   searchReplaceCost,
   stripFences,
 } from "../lib/guards.ts"
@@ -147,6 +150,71 @@ const symbols = extractSymbols(
 )
 ok("finds classes, methods and functions", ["Foo", "bar", "baz", "Qux"].every((s) => symbols.includes(s)))
 ok("does not repeat itself", new Set(symbols).size === symbols.length)
+
+// The two allowlists must not converge. Creating a file nobody reads and
+// changing one that comes back as a reviewable diff are different risks, and
+// holding edits to the write list was measured costing 39% on a real task.
+ok("writes stay away from source", !isAllowed("app/services.py", DEFAULT_WRITE_PATHS))
+ok("edits reach source", isAllowed("app/services.py", DEFAULT_EDIT_PATHS))
+ok("edits still cover tests", isAllowed("tests/test_services.py", DEFAULT_EDIT_PATHS))
+ok("edits leave data alone", !isAllowed("app/fixtures/users.json", DEFAULT_EDIT_PATHS))
+
+for (const forbidden of [
+  ".github/workflows/deploy.yml",
+  "db/migrations/001_add_users.py",
+  "alembic/versions/abc.py",
+  "package-lock.json",
+  "poetry.lock",
+  ".opencode/shunt.json",
+]) {
+  ok(`off limits: ${forbidden}`, isForbidden(forbidden))
+}
+ok("ordinary source is not forbidden", !isForbidden("app/services.py"))
+ok("a workflows directory outside .github is fine", !isForbidden("app/workflows/order.py"))
+// The deny list has to outrank a widened allowlist, or it is only advice.
+ok(
+  "forbidden paths can match a wide allowlist",
+  isAllowed(".github/workflows/deploy.yml", ["**"]) && isForbidden(".github/workflows/deploy.yml"),
+)
+
+console.log("-- containment --")
+{
+  const fs = await import("node:fs/promises")
+  const os = await import("node:os")
+  const nodePath = await import("node:path")
+
+  const root = await fs.mkdtemp(nodePath.join(os.tmpdir(), "shunt-contain-"))
+  const repo = nodePath.join(root, "repo")
+  const outside = nodePath.join(root, "outside")
+  await fs.mkdir(nodePath.join(repo, "src"), { recursive: true })
+  await fs.mkdir(outside, { recursive: true })
+  await fs.writeFile(nodePath.join(outside, "secret.py"), "# not ours\n")
+
+  const rejects = async (name, relative) => {
+    try {
+      await resolveInside(repo, relative)
+      ok(name, false, "was allowed")
+    } catch {
+      ok(name, true)
+    }
+  }
+
+  ok("an ordinary path inside the repository is allowed", !!(await resolveInside(repo, "src/new.py")))
+  await rejects("an absolute path is refused", "/etc/passwd")
+  await rejects("traversal out of the repository is refused", "../outside/secret.py")
+
+  // The ancestor walk starts at the parent because the target may not exist,
+  // which left the last component unchecked. A file sitting inside the
+  // repository can itself be a link out of it: every directory passes, the
+  // write follows the link, the bytes land outside.
+  await fs.symlink(nodePath.join(outside, "secret.py"), nodePath.join(repo, "src", "linked.py"))
+  await rejects("a file that is itself a symlink out is refused", "src/linked.py")
+
+  await fs.symlink(outside, nodePath.join(repo, "escape"))
+  await rejects("a directory symlink out is refused", "escape/secret.py")
+
+  await fs.rm(root, { recursive: true, force: true })
+}
 
 console.log(failed ? `\n${failed} check(s) failed` : "\nall checks passed")
 process.exit(failed ? 1 : 0)

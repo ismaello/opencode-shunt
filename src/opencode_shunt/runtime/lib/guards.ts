@@ -39,10 +39,10 @@ export const SECRET_CONTENT = [
 ]
 
 /**
- * Paths a worker may create or modify, as globs. Deliberately covers only tests,
+ * Paths a worker may *create*, as globs. Deliberately covers only tests,
  * fixtures and scaffolding: code whose correctness a test run can judge, and
  * whose being wrong does not quietly change what the product does. Widen per
- * repository with "writePaths" or "editPaths" in .opencode/shunt.json.
+ * repository with "writePaths" in .opencode/shunt.json.
  */
 export const DEFAULT_WRITE_PATHS = [
   "tests/**",
@@ -61,6 +61,76 @@ export const DEFAULT_WRITE_PATHS = [
   "**/*.spec.ts",
   "**/*.spec.tsx",
 ]
+
+/**
+ * Paths a worker may *modify*, as globs. Wider than DEFAULT_WRITE_PATHS on
+ * purpose, because the two tools carry different risk and were wrongly held to
+ * one standard. delegate_write invents a whole file that nobody reads;
+ * delegate_edit changes an existing one and hands back a diff of exactly what
+ * moved, having first backed the file up, refused an oversized change and run a
+ * parser over the result. The orchestrator reviews a change here, which it
+ * cannot do for a file it never sees.
+ *
+ * Measured before changing this: holding edits to the test-only list made the
+ * orchestrator write 26 docstrings by hand that the worker was perfectly able to
+ * write, and that one refusal cost 39% of the task.
+ *
+ * Source extensions rather than directory names, since directory conventions
+ * vary and NEVER_TOUCH already fences off the places where a mechanical edit
+ * does damage no diff review would catch.
+ */
+export const DEFAULT_EDIT_PATHS = [
+  "**/*.py",
+  "**/*.ts",
+  "**/*.tsx",
+  "**/*.js",
+  "**/*.jsx",
+  "**/*.mjs",
+  "**/*.go",
+  "**/*.rs",
+  "**/*.java",
+  "**/*.kt",
+  "**/*.rb",
+  "**/*.php",
+  "**/*.cs",
+  "**/*.swift",
+  "**/*.scala",
+  "**/*.c",
+  "**/*.h",
+  "**/*.cc",
+  "**/*.cpp",
+  "**/*.hpp",
+  "**/*.css",
+  "**/*.scss",
+  "**/*.html",
+  "**/*.md",
+]
+
+/**
+ * Paths no worker may write or edit, whatever the configuration says. An
+ * allowlist is a statement of intent and people widen it in a hurry; this is
+ * the floor underneath it. Everything here shares one property: a wrong edit
+ * survives review because the diff looks reasonable, and the damage lands
+ * somewhere other than the code you were reading.
+ */
+export const NEVER_TOUCH = [
+  // Runs on push, with credentials attached.
+  /(^|\/)\.github\/workflows\//,
+  /(^|\/)\.gitlab-ci\.yml$/,
+  /(^|\/)Jenkinsfile$/,
+  /(^|\/)\.circleci\//,
+  // Applies once, against real data, and does not come back.
+  /(^|\/)migrations?\//,
+  /(^|\/)alembic\//,
+  // Resolved dependency graphs: hand-editing silently changes what gets installed.
+  /(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|poetry\.lock|Cargo\.lock|go\.sum|Gemfile\.lock)$/,
+  // The policy that constrains the worker: it must not be able to widen it.
+  /(^|\/)\.opencode\//,
+]
+
+export function isForbidden(displayPath: string): boolean {
+  return NEVER_TOUCH.some((re) => re.test(displayPath))
+}
 
 /** Glob subset: "**" spans directories, "*" stays inside one segment. */
 export function globToRegExp(pattern: string): RegExp {
@@ -127,6 +197,22 @@ export async function resolveInside(worktree: string, input: string) {
       probe = parent
     }
   }
+
+  // The walk above starts at the parent, because the target may not exist yet.
+  // When it does exist, that leaves the last component unchecked - and a file
+  // sitting inside the repository can itself be a symlink pointing out of it.
+  // Every ancestor passes, the write follows the link, and the bytes land
+  // wherever it pointed.
+  try {
+    const realTarget = await fs.realpath(absolute)
+    if (realTarget !== realRoot && !realTarget.startsWith(realRoot + path.sep)) {
+      throw new Error("resolves outside the repository")
+    }
+  } catch (error: any) {
+    if (String(error.message).includes("outside the repository")) throw error
+    // Anything else means it does not exist yet, which the walk already covered.
+  }
+
   return { absolute, displayPath: path.relative(worktree, absolute) }
 }
 
@@ -250,6 +336,94 @@ export async function checkSyntax(worktree: string, absolute: string): Promise<S
 const SHUNT_DIR = path.join(os.homedir(), ".local", "share", "opencode-shunt")
 
 /** Keep whatever is about to be replaced, so no write is ever final. */
+export type ApplyResult =
+  /** The check that cleared the write, so callers need not run it a second time. */
+  | { ok: true; syntax: SyntaxCheck }
+  | { ok: false; kind: "changed-underneath" | "syntax" | "io"; detail: string }
+
+/**
+ * Put new contents in place, or leave the file exactly as it was.
+ *
+ * Three things went wrong in the previous order of operations, and all three
+ * are invisible when they happen.
+ *
+ * The file was written first and parsed afterwards, so a worker that produced
+ * broken code put it on disk and relied on a backup to undo it. When the
+ * backup had failed - best effort, never checked - the broken version simply
+ * stayed. Validating a temporary copy instead means the original is never the
+ * thing at risk.
+ *
+ * The write was not atomic, so anything reading the file during it saw a
+ * partial one. `rename` within a directory is, so nothing observes a
+ * half-written state.
+ *
+ * And `before` was read before a worker call that takes seconds. If you edited
+ * the file in that window, the write silently reverted your work. Comparing
+ * against what is on disk now turns that into a refusal.
+ */
+export async function applyVerified(
+  worktree: string,
+  target: { absolute: string; displayPath: string },
+  /** Contents read before the worker ran, or null when creating a new file. */
+  before: string | null,
+  after: string,
+): Promise<ApplyResult> {
+  let current: string | null
+  try {
+    current = await fs.readFile(target.absolute, "utf8")
+  } catch (error: any) {
+    if (error?.code !== "ENOENT") {
+      return { ok: false, kind: "io", detail: `could not re-read the file: ${error.message}` }
+    }
+    current = null
+  }
+  if (current !== before) {
+    return {
+      ok: false,
+      kind: "changed-underneath",
+      detail:
+        before === null
+          ? "the file was created by something else while the worker was answering"
+          : "the file changed on disk while the worker was answering",
+    }
+  }
+
+  try {
+    await fs.mkdir(path.dirname(target.absolute), { recursive: true })
+  } catch (error: any) {
+    return { ok: false, kind: "io", detail: error.message }
+  }
+
+  // Same directory, so the rename below stays within one filesystem and the
+  // extension survives for the syntax check, which dispatches on it.
+  const directory = path.dirname(target.absolute)
+  const scratch = path.join(
+    directory,
+    `.shunt-${process.pid}-${Date.now().toString(36)}-${path.basename(target.absolute)}`,
+  )
+
+  try {
+    await fs.writeFile(scratch, after, "utf8")
+  } catch (error: any) {
+    await fs.rm(scratch, { force: true })
+    return { ok: false, kind: "io", detail: error.message }
+  }
+
+  const syntax = await checkSyntax(worktree, scratch)
+  if (syntax.status === "failed") {
+    await fs.rm(scratch, { force: true })
+    return { ok: false, kind: "syntax", detail: syntax.detail }
+  }
+
+  try {
+    await fs.rename(scratch, target.absolute)
+  } catch (error: any) {
+    await fs.rm(scratch, { force: true })
+    return { ok: false, kind: "io", detail: error.message }
+  }
+  return { ok: true, syntax }
+}
+
 export async function backup(displayPath: string, previous: string): Promise<string | null> {
   try {
     const dir = path.join(SHUNT_DIR, "write-backups")

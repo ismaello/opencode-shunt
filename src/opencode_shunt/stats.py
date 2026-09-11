@@ -16,6 +16,8 @@ Usage:
     ./shunt-stats.py --since 2026-09-10
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import pathlib
@@ -31,9 +33,16 @@ TELEMETRY = paths.telemetry_file()
 CHARS_PER_TOKEN = 3.5
 
 
-def load(since: str | None) -> list[dict]:
+def load(since: str | None, repo: pathlib.Path | None = None) -> list[dict]:
     if not TELEMETRY.exists():
-        sys.exit(f"no telemetry at {TELEMETRY}")
+        # Not an error. This is what a correct, freshly installed system looks
+        # like before anyone has used it, and exiting non-zero there says
+        # "broken" to a person and fails a pipeline for a shell script.
+        print(f"no telemetry yet at {TELEMETRY}; nothing has run through the shunt in this install.")
+        return []
+    # One telemetry file serves every repository, so without this a fresh
+    # install reports numbers earned somewhere else as if they were its own.
+    mine = paths.sessions_in(repo) if repo is not None else None
     rows = []
     for line in TELEMETRY.read_text().splitlines():
         if not line.strip():
@@ -43,6 +52,8 @@ def load(since: str | None) -> list[dict]:
         except json.JSONDecodeError:
             continue
         if since and row.get("ts", "") < since:
+            continue
+        if mine is not None and row.get("sessionID") not in mine:
             continue
         rows.append(row)
     return rows
@@ -68,9 +79,19 @@ def summarise(label: str, pairs: list[tuple[int, int]], width: int = 22) -> floa
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
+    parser.add_argument("repo", nargs="?", default=None, help="repository to report on")
     parser.add_argument("--since", help="ISO timestamp in UTC, e.g. 2026-09-10; telemetry is stamped in UTC")
+    parser.add_argument("--all-repos", action="store_true", help="every repository, not just this one")
     args = parser.parse_args(argv)
-    rows = load(args.since)
+
+    repo = None if args.all_repos else paths.resolve_repo(args.repo)
+    rows = load(args.since, repo)
+    if not rows:
+        where = "en ningún repositorio" if repo is None else f"en {repo}"
+        print(f"no hay telemetría {where}. Usa --all-repos para ver todo.")
+        return 0
+    if repo is not None:
+        print(f"ámbito: {repo}   (--all-repos para ver todos)\n")
 
     reads = [
         r

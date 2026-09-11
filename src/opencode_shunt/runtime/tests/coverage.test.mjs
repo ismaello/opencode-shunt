@@ -82,5 +82,35 @@ r = readCoverage(
 )
 check("findings section is not read as coverage", r.missing.sort(), ["src/b.py", "src/c.py"])
 
+// A path is a name, not a run of characters. Matching by substring marked a
+// file the worker never opened as accounted for, and the read hook then had
+// grounds to stop the orchestrator reading it: the one file with no evidence
+// behind it became the hardest one to get.
+r = readCoverage(
+  `COVERAGE:
+- tests/test_a.py: analysed - covers the happy path`,
+  ["src/a.py", "tests/test_a.py"],
+)
+check("a longer filename does not cover the shorter one", r.analysed, ["tests/test_a.py"])
+check("and the shorter one is reported missing", r.missing, ["src/a.py"])
+
+r = readCoverage(
+  `COVERAGE:
+- src/a.py: analysed`,
+  ["a.py", "src/a.py"],
+)
+check("a directory prefix does not cover the bare name", r.analysed, ["src/a.py"])
+check("and the bare name is reported missing", r.missing, ["a.py"])
+
+// The boundary rule must not go the other way and reject honest mentions.
+r = readCoverage(
+  `COVERAGE:
+- src/a.py: analysed
+* src/b.py — analysed
+  "src/c.py": not relevant`,
+  files,
+)
+check("punctuation around a path still counts as a mention", r.missing, [])
+
 console.log(failed ? `\n${failed} check(s) failed` : "\nall checks passed")
 process.exit(failed ? 1 : 0)

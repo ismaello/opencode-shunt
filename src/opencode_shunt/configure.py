@@ -25,6 +25,7 @@ import shutil
 import sqlite3
 import statistics
 import subprocess
+import sys
 from dataclasses import dataclass, field
 
 from . import paths, providers
@@ -41,6 +42,7 @@ class Measured:
     models_seen: list[str] = field(default_factory=list)
     languages: dict[str, int] = field(default_factory=dict)
     test_globs: list[str] = field(default_factory=list)
+    source_globs: list[str] = field(default_factory=list)
     is_git: bool = False
     available: list[str] = field(default_factory=list)
 
@@ -135,6 +137,25 @@ def measure_repo(repo: pathlib.Path, measured: Measured) -> None:
         globs = ["tests/**", "test/**"]
     measured.test_globs = sorted(set(globs))
 
+    # What delegate_edit may change. Wider than the test globs on purpose: that
+    # tool returns a reviewable diff of an existing file, so the control is the
+    # review, not the allowlist. Holding it to tests measurably cost 39% on a
+    # mechanical edit. Extensions actually present, so the file says what this
+    # repository is rather than listing languages it does not use.
+    by_language = {
+        "python": ["**/*.py"],
+        "typescript": ["**/*.ts", "**/*.tsx"],
+        "javascript": ["**/*.js", "**/*.jsx"],
+        "go": ["**/*.go"],
+        "rust": ["**/*.rs"],
+        "java": ["**/*.java"],
+        "ruby": ["**/*.rb"],
+    }
+    source: list[str] = []
+    for language in measured.languages:
+        source += by_language.get(language, [])
+    measured.source_globs = sorted(set(source))
+
 
 def detect_available(measured: Measured) -> None:
     """Which providers this machine could actually use right now."""
@@ -198,12 +219,27 @@ def ollama_models(url: str) -> list[str]:
 # --- asking, for the few things that are decisions ---------------------------
 
 
+def interactive() -> bool:
+    """Whether there is a human on the other end of stdin.
+
+    Without this check the wizard called input() regardless and a scripted or
+    piped run died on an EOFError traceback - including `config --dry-run`,
+    which is the one invocation whose whole point is to be safe to run
+    anywhere. A traceback is the worst possible answer here, because it looks
+    like the tool is broken rather than waiting for an answer nobody can give.
+    """
+    return sys.stdin.isatty()
+
+
 def choose(prompt: str, options: list[tuple[str, str]], default: int = 0) -> str:
     """A numbered choice. Returns the value of the chosen option."""
     print(f"\n{prompt}")
     for index, (_, label) in enumerate(options, 1):
         marker = " (default)" if index - 1 == default else ""
         print(f"  {index}. {label}{marker}")
+    if not interactive():
+        print(f"choice: {default + 1} (no terminal, taking the default)")
+        return options[default][0]
     while True:
         answer = input(f"choice [{default + 1}]: ").strip()
         if not answer:
@@ -215,6 +251,9 @@ def choose(prompt: str, options: list[tuple[str, str]], default: int = 0) -> str
 
 def confirm(prompt: str, default: bool = True) -> bool:
     suffix = "Y/n" if default else "y/N"
+    if not interactive():
+        print(f"{prompt} [{suffix}]: {'y' if default else 'n'} (no terminal)")
+        return default
     answer = input(f"{prompt} [{suffix}]: ").strip().lower()
     return default if not answer else answer.startswith("y")
 
@@ -225,15 +264,37 @@ def role_options(role: str, measured: Measured) -> list[tuple[str, str]]:
     candidates.sort(key=lambda p: (p.id not in measured.available, p.roles.index(role)))
     options = []
     for provider in candidates:
-        for model in provider.models.get(role, ()):
+        # For a local server, offer what it has rather than what the catalogue
+        # imagines. Choosing a model Ollama was never given produces a 404 on
+        # every delegation, which the orchestrator reads as "worker down" and
+        # answers by doing the work itself, at full price and without complaint.
+        installed = (
+            ollama_models(provider.base_url or "") if provider.id in measured.available and provider.kind == "ollama" else None
+        )
+        for model in _models_for(provider, role, installed):
             ready = "" if provider.id in measured.available else "  [not configured on this machine]"
             price = ""
-            if role != "orchestrator" and provider.price_in:
-                price = f"  ~${provider.price_in:g}/M in"
-            elif role != "orchestrator":
-                price = "  free"
+            if role != "orchestrator":
+                # Per model, not per provider. Gemini Pro shown at Flash's price
+                # invites picking a worker four times dearer than the number on
+                # screen, which is the one mistake this whole system exists to
+                # avoid, made while reading a screen meant to prevent it.
+                per_million = providers.prices_for(provider, model)["price_in"]
+                price = f"  ~${per_million:g}/M in" if per_million else "  free"
             options.append((f"{provider.id}/{model}", f"{provider.label} - {model}{price}{ready}"))
     return options
+
+
+def _models_for(provider: Provider, role: str, installed: list[str] | None) -> list[str]:
+    """Catalogue models for a role, narrowed to what is really there when we can tell."""
+    catalogue = list(provider.models.get(role, ()))
+    if installed is None:
+        return catalogue
+    # Keep catalogue order for the ones that are present, then anything else the
+    # machine has, since a pulled model the catalogue never heard of still works.
+    present = [m for m in catalogue if m in installed or any(i.split(":")[0] == m for i in installed)]
+    extra = [m for m in installed if m not in present and m not in catalogue]
+    return present + extra
 
 
 @dataclass
@@ -375,17 +436,37 @@ def build(choices: Choices) -> dict:
         "profile": reader_key,
         "writerProfile": writer_key,
         "bulkExempt": sorted(exempt),
+        # Creating a file a worker invents and nobody reads stays at tests only.
+        # Changing an existing one comes back as a diff, so it may reach source.
         "writePaths": choices.measured.test_globs,
-        "editPaths": choices.measured.test_globs,
+        "editPaths": sorted(set(choices.measured.test_globs + choices.measured.source_globs)),
         "economics": {
             "assumedConversationTokens": choices.measured.conversation_tokens,
             "remainingTurns": choices.measured.remaining_turns,
         },
     }
-    if orchestrator_provider.cache_write:
-        shared["economics"]["cacheWritePerMillion"] = orchestrator_provider.cache_write
-    if orchestrator_provider.cache_read:
-        shared["economics"]["cacheReadPerMillion"] = orchestrator_provider.cache_read
+    # The floor belongs to whoever is being protected, so it is priced from the
+    # orchestrator's own model, not its vendor's cheapest. Gemini Pro against
+    # Gemini Flash differ by four times, which moves the threshold from 13 KB to
+    # 28 KB: with a cheap boss there is simply less worth saving.
+    orchestrator_prices = providers.prices_for(orchestrator_provider, orchestrator_model)
+    if orchestrator_prices["cache_write"]:
+        shared["economics"]["cacheWritePerMillion"] = orchestrator_prices["cache_write"]
+    if orchestrator_prices["cache_read"]:
+        shared["economics"]["cacheReadPerMillion"] = orchestrator_prices["cache_read"]
+
+    # What delegating costs on the cheap side. Left out of the arithmetic
+    # originally, which made the worker look free and tilted every marginal
+    # call towards delegating. Zero is written explicitly for a local model,
+    # because there it is a measurement rather than a missing value.
+    reader_prices = providers.prices_for(reader_provider, reader_model)
+    shared["economics"]["workerInPerMillion"] = (
+        0.0 if not reader_provider.remote else (reader_prices["price_in"] or 0.0)
+    )
+    shared["economics"]["workerOutPerMillion"] = (
+        0.0 if not reader_provider.remote else (reader_prices["price_out"] or 0.0)
+    )
+
     if choices.allowed:
         shared["allowedProviders"] = choices.allowed
 
@@ -436,6 +517,46 @@ def build(choices: Choices) -> dict:
     }
 
 
+# Policy the user is explicitly invited to edit - the README tells people to
+# widen these - as opposed to the rest, which is derived from the models chosen
+# and must be rewritten when they change.
+USER_POLICY = ("editPaths", "writePaths", "allowedProviders")
+
+
+def merge_over(path: pathlib.Path, produced: dict) -> tuple[dict, list[str]]:
+    """Lay the wizard's answers over whatever is already there.
+
+    This used to write the generated file outright, so reconfiguring a model
+    silently discarded every policy set by hand. It also contradicted a promise
+    the tool makes elsewhere: `shunt update` treats `shunt.json` as user-owned
+    and will not touch it even with `--force`. The file was safe from the
+    command that sounds dangerous and rewritten by the one that sounds
+    harmless.
+
+    The split is between what the wizard deduces and what you decide. Prices,
+    profiles and economics follow from the models you just picked, so they are
+    rewritten - keeping a cache price from a model you no longer run is the
+    failure this whole system is most prone to. Path allowlists are yours.
+    """
+    try:
+        existing = json.loads(path.read_text())
+    except Exception:
+        return produced, []
+    if not isinstance(existing, dict):
+        return produced, []
+
+    merged = {**existing, **produced}
+    kept = sorted(set(existing) - set(produced))
+
+    for key in USER_POLICY:
+        if key in existing and existing[key] != produced.get(key):
+            merged[key] = existing[key]
+            if key in produced:
+                kept.append(key)
+
+    return merged, sorted(set(kept))
+
+
 def apply(repo: pathlib.Path, plan: dict) -> list[str]:
     from .installer import merge_opencode_json
 
@@ -443,11 +564,19 @@ def apply(repo: pathlib.Path, plan: dict) -> list[str]:
     destination.mkdir(parents=True, exist_ok=True)
     notes = []
 
-    (destination / "shunt.json").write_text(json.dumps(plan["shared"], indent=2) + "\n")
+    shared_path = destination / "shunt.json"
+    shared, kept = merge_over(shared_path, plan["shared"])
+    shared_path.write_text(json.dumps(shared, indent=2) + "\n")
     notes.append("wrote .opencode/shunt.json (shared policy, commit this)")
+    if kept:
+        notes.append(f"  kept your own settings: {', '.join(kept)}")
 
-    (destination / paths.LOCAL_CONFIG).write_text(json.dumps(plan["local"], indent=2) + "\n")
+    local_path = destination / paths.LOCAL_CONFIG
+    local, kept_local = merge_over(local_path, plan["local"])
+    local_path.write_text(json.dumps(local, indent=2) + "\n")
     notes.append(f"wrote .opencode/{paths.LOCAL_CONFIG} (this machine, gitignored)")
+    if kept_local:
+        notes.append(f"  kept your own settings: {', '.join(kept_local)}")
 
     if note := merge_opencode_json(repo, plan["providers"]):
         notes.append(note)

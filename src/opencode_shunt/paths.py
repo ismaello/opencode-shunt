@@ -47,6 +47,58 @@ def opencode_db() -> pathlib.Path:
     return pathlib.Path.home() / ".local/share/opencode/opencode.db"
 
 
+def opencode_models() -> pathlib.Path:
+    """OpenCode's own table of models and what they cost.
+
+    Read because the alternative does not work. A price list maintained by hand
+    here goes stale the week a vendor ships, and stale prices are not a
+    cosmetic problem: the delegation floor is computed from them, so an
+    orchestrator priced as a model two generations old delegates at the wrong
+    threshold on every call, silently. Caught in exactly that state - the
+    catalogue offered Gemini 2.5 Pro while 3.1 Pro was current, and priced
+    GPT-5.2 at 5.1's rates.
+
+    Not a documented interface, so every read is defensive and the baked-in
+    table stays as the fallback.
+    """
+    if override := os.environ.get("OPENCODE_MODELS"):
+        return pathlib.Path(override)
+    cache = os.environ.get("XDG_CACHE_HOME") or pathlib.Path.home() / ".cache"
+    return pathlib.Path(cache) / "opencode" / "models.json"
+
+
+def sessions_in(repo: pathlib.Path) -> set[str] | None:
+    """Session ids recorded against one repository, or None if unknowable.
+
+    Telemetry is written to a single file per machine, so every command that
+    reads it reports on every repository at once unless it filters. That was a
+    real defect rather than a cosmetic one: a freshly installed repo had
+    `doctor` announcing 77 delegations and 248k tokens saved, all of it earned
+    somewhere else. A health check that reports activity which did not happen
+    here is telling the user something untrue about the thing they just
+    installed.
+
+    OpenCode records the directory a session ran in, which is the only link
+    between a telemetry line and a repository. Returning None when the database
+    is unreadable means "cannot filter", and callers then report everything and
+    say so - better than silently reporting nothing.
+    """
+    database = opencode_db()
+    if not database.is_file():
+        return None
+    try:
+        import sqlite3
+
+        connection = sqlite3.connect(f"file:{database}?mode=ro", uri=True)
+        return {
+            sid for (sid,) in connection.execute(
+                "SELECT id FROM session WHERE directory = ?", (str(repo),)
+            )
+        }
+    except Exception:
+        return None
+
+
 def resolve_repo(argument: str | None) -> pathlib.Path:
     repo = pathlib.Path(argument or ".").expanduser().resolve()
     if not repo.is_dir():

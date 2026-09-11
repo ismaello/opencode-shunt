@@ -1,0 +1,33 @@
+{
+  "name": "opencode-shunt",
+  "version": "3.4.0",
+  "description": "Keep bulk work off your expensive model, in any OpenCode repository",
+  "keywords": [
+    "opencode",
+    "llm",
+    "tokens",
+    "cost",
+    "claude",
+    "gemini",
+    "ollama"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ismaello/opencode-shunt.git"
+  },
+  "homepage": "https://github.com/ismaello/opencode-shunt#readme",
+  "bugs": "https://github.com/ismaello/opencode-shunt/issues",
+  "bin": {
+    "opencode-shunt": "bin/cli.js",
+    "shunt": "bin/cli.js"
+  },
+  "files": [
+    "bin/",
+    "dist/",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}

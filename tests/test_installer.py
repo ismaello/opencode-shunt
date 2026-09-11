@@ -13,6 +13,7 @@ comes from.
 from __future__ import annotations
 
 import json
+import pathlib
 
 from opencode_shunt import installer, paths
 
@@ -68,27 +69,69 @@ def test_install_then_check_reports_up_to_date(tmp_path, capsys):
 
 def test_check_reports_a_locally_edited_file(tmp_path, capsys):
     installer.install(tmp_path, quiet=True)
-    (tmp_path / ".opencode" / "shunt.json").write_text('{"edited": true}')
+    _a_code_file(tmp_path).write_text("// edited\n")
     capsys.readouterr()
     assert installer.install(tmp_path, check=True) == 1
     assert "edited here" in capsys.readouterr().out
 
 
+def _a_code_file(tmp_path) -> pathlib.Path:
+    """Something we ship as code rather than configuration."""
+    target = tmp_path / ".opencode" / "lib" / "guards.ts"
+    assert target.is_file(), "the runtime layout changed; pick another shipped file"
+    return target
+
+
 def test_an_edited_file_survives_an_update(tmp_path):
     installer.install(tmp_path, quiet=True)
-    target = tmp_path / ".opencode" / "shunt.json"
-    target.write_text('{"mine": true}')
+    target = _a_code_file(tmp_path)
+    target.write_text("// mine\n")
     installer.install(tmp_path, quiet=True)
-    assert json.loads(target.read_text()) == {"mine": True}
+    assert target.read_text() == "// mine\n"
 
 
 def test_force_replaces_it_but_keeps_a_copy(tmp_path):
     installer.install(tmp_path, quiet=True)
-    target = tmp_path / ".opencode" / "shunt.json"
-    target.write_text('{"mine": true}')
+    target = _a_code_file(tmp_path)
+    target.write_text("// mine\n")
     installer.install(tmp_path, force=True, quiet=True)
-    assert json.loads(target.read_text()) != {"mine": True}
-    assert json.loads(target.with_suffix(".json.bak").read_text()) == {"mine": True}
+    assert target.read_text() != "// mine\n"
+    assert target.with_suffix(".ts.bak").read_text() == "// mine\n"
+
+
+def test_configuration_survives_even_a_forced_update(tmp_path):
+    """The regression that made every delegated edit fail.
+
+    shunt.json is scaffolded once and then owned by 'shunt config'. An update
+    that replaces it with the shipped template silently drops writerProfile, so
+    delegations go to a profile nobody chose and the expensive model quietly
+    does the work instead. A .bak does not help: nothing tells you to look.
+    """
+    installer.install(tmp_path, quiet=True)
+    target = tmp_path / ".opencode" / "shunt.json"
+    configured = {"profile": "mine", "writerProfile": "mine-writer"}
+    target.write_text(json.dumps(configured))
+
+    installer.install(tmp_path, force=True, quiet=True)
+
+    assert json.loads(target.read_text()) == configured
+    assert not target.with_suffix(".json.bak").exists(), "it should not need rescuing"
+
+
+def test_a_missing_config_is_still_scaffolded(tmp_path):
+    installer.install(tmp_path, quiet=True)
+    assert (tmp_path / ".opencode" / "shunt.json").is_file()
+
+
+def test_leaving_config_alone_does_not_mark_it_outdated(tmp_path, capsys):
+    """The manifest must not claim we wrote a template we deliberately skipped."""
+    installer.install(tmp_path, quiet=True)
+    (tmp_path / ".opencode" / "shunt.json").write_text('{"profile": "mine"}')
+    installer.install(tmp_path, force=True, quiet=True)
+    capsys.readouterr()
+
+    assert installer.install(tmp_path, check=True) == 0
+    assert "up to date" in capsys.readouterr().out
 
 
 def test_the_manifest_records_the_version(tmp_path):

@@ -46,7 +46,7 @@ segundo sin cobrarte nada.
        ┌────────────┼────────────┐
        │            │            │
        ▼            ▼            ▼
-  bulk_read   local-explorer   shunt
+  bulk_read   explorer   shunt
   (tool)      (subagente)      (guardia)
        │            │            │
        └─────┬──────┘            │
@@ -154,7 +154,7 @@ Medido en un caso real (docstrings en 21 funciones de un fichero de 308 líneas)
 **78% menos tokens de salida**, 0,055 $ ahorrados en una sola operación, los 21
 tests pasando y el fichero idéntico al original salvo las docstrings.
 
-### `local-explorer` — el explorador
+### `explorer` — el explorador
 
 Un subagente que corre en Qwen. Se usa cuando **todavía no sabes qué ficheros
 importan**:
@@ -175,7 +175,7 @@ más de 400 líneas, lo bloquea y le devuelve este mensaje:
 SHUNT: refusing to read src/cofers_engine/chat/__init__.py in full (548 lines).
 This would burn frontier context on bulk reading. Instead:
   - bulk_read(question, paths) ...
-  - @local-explorer ...
+  - @explorer ...
   - read with offset/limit ...
 ```
 
@@ -253,9 +253,18 @@ cruce es el mismo.
 
 ### Cómo distingue quién es quién
 
-No mira el nombre del agente, mira **qué proveedor sirve el modelo de la sesión**.
-Si la sesión corre sobre Ollama, no se bloquea nunca. Si corre sobre Anthropic,
-se aplican las reglas. Así, si mañana añades otro agente local, funciona solo.
+Mira **qué modelo exacto sirve la sesión**, y lo compara con la lista
+`bulkExempt` de `shunt.json`. Si la sesión corre sobre un modelo exento —el
+explorador, o cualquier cosa local— no se bloquea nunca. Si corre sobre el
+orquestador, se aplican las reglas.
+
+Esto empezó siendo por proveedor, y era un fallo serio. En cuanto un mismo
+proveedor ocupa dos roles —Gemini Pro de jefe con Gemini Flash de lector, que es
+una configuración de lo más normal— eximir al proveedor eximía también al jefe, y
+el sistema se apagaba entero sin decir nada: cero bloqueos, cero delegaciones,
+factura completa y ninguna señal de que algo iba mal. Por eso ahora la clave es
+el modelo, y por eso `shunt doctor` falla en voz alta si el orquestador acaba en
+esa lista.
 
 Y si no logra identificar la sesión, **deja pasar**. Bloquear por error es peor
 que dejar pasar por error.
@@ -287,42 +296,76 @@ No cambia nada. Abres OpenCode y escribes lo que quieras:
 Lo que ocurre por dentro:
 
 ```
-1. Claude no sabe dónde está el código
-   └─► @local-explorer  ────► Qwen busca por el repo
-                              devuelve 4 ficheros y sus líneas
+1. El orquestador no sabe dónde está el código
+   └─► @explorer  ────────► el lector busca por el repo
+                            devuelve 4 ficheros y sus líneas
 
-2. Claude necesita entender esos ficheros
-   └─► bulk_read(...)   ────► Qwen lee 1.200 líneas
-                              devuelve un resumen con rangos exactos
+2. El orquestador necesita entender esos ficheros
+   └─► bulk_read(...)  ───► el lector lee 1.200 líneas
+                            devuelve un resumen con rangos exactos
 
-3. Claude lee sólo las líneas 107-161 de matching.py
+3. El orquestador lee sólo las líneas 107-161 de matching.py
    (lectura acotada: el shunt la deja pasar)
 
-4. Claude razona, encuentra la causa, propone el arreglo
+4. El orquestador razona, encuentra la causa, propone el arreglo
 
-5. Claude hace el cambio y lo revisa
+5. El cambio mecánico va a delegate_edit; vuelve como diff y lo revisa
 ```
 
 Tú sólo ves el resultado. Y en la interfaz, unas líneas indicando cuándo se ha
 delegado trabajo.
 
-### Los tres comandos que conviene conocer
+### Los comandos que conviene conocer
 
 ```bash
-# Desactivar el bloqueo temporalmente (sigue registrando)
-SHUNT_MODE=observe opencode
-
-# Subir el umbral si te resulta agresivo
-SHUNT_MAX_LINES=800 opencode
-
-# Ver qué ha hecho el sistema
-python3 -c "
-import json
-for l in open('$HOME/.local/share/opencode-shunt/telemetry.jsonl'):
-    d = json.loads(l)
-    print(d.get('verdict') or d.get('tool'), d.get('file') or d.get('lines'))
-"
+shunt doctor     # ¿está bien montado? Ejecútalo cuando algo huela raro
+shunt costs      # escribe shunt-costes.md: qué ha costado este repo y en qué
+shunt stats      # qué ahorró cada delegación, operación por operación
+shunt config     # cambiar quién orquesta, quién lee y quién escribe
 ```
+
+`shunt costs` es el que contesta a "¿cuánto me está costando esto?". Escribe un
+fichero Markdown del repositorio donde lo lances, y parte la factura en salida,
+cache write y cache read, porque cada una la ataca una herramienta distinta y un
+total sin desglosar no te dice qué hacer a continuación. El gasto sale de la
+contabilidad de OpenCode; lo evitado es estimación y lo dice donde aparece.
+
+También avisa de las delegaciones que fallaron, que importan más de lo que
+parece: cuando una delegación falla, el trabajo vuelve al modelo caro sin
+avisarte, y la factura sube sin que nada parezca roto.
+
+Y dos variables de entorno para casos puntuales:
+
+```bash
+SHUNT_MODE=observe opencode      # no bloquea, pero sigue registrando
+SHUNT_MAX_LINES=800 opencode     # subir el umbral si te resulta agresivo
+```
+
+### Cambiar de orquestador
+
+`shunt config` otra vez. No hay que editar el modelo a mano en ningún sitio: el
+asistente reescribe los prompts de los agentes, el bloque del proveedor en
+`opencode.json`, la lista de exenciones y la economía de delegación **a la vez**,
+y desincronizar cualquiera de esos cuatro es exactamente cómo este sistema se
+rompe en silencio. Tus `writePaths`, `editPaths` y política de nube sobreviven.
+
+Lo que necesita cada uno:
+
+| Orquestador | Credenciales |
+|---|---|
+| `anthropic/claude-opus-4-8` | `ANTHROPIC_API_KEY`, o `opencode auth login` |
+| `google-vertex/gemini-2.5-pro` | `gcloud auth application-default login`, y exportar `GOOGLE_CLOUD_PROJECT` y `VERTEX_LOCATION` |
+| `openai/gpt-5.2` | `OPENAI_API_KEY` |
+| `deepseek/deepseek-reasoner` | `DEEPSEEK_API_KEY` |
+
+**El suelo de delegación se mueve con el jefe, y así debe ser.** Delegar existe
+para proteger un contexto caro; con un jefe barato hay menos que proteger, así
+que el umbral a partir del cual `bulk_read` se niega sube solo. Depende de la
+relación entre lo que cobra el proveedor por meter un token en caché y por
+reenviarlo: Anthropic descuenta un token cacheado un 90%, Google un 75%. Por eso
+el mismo repositorio delega a partir de 12,6 KB con Opus y a partir de 23,4 KB
+con Gemini Pro. No hay nada que tocar, lo calcula `shunt config` con el precio
+del modelo que elijas.
 
 ---
 

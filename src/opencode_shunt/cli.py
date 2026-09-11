@@ -23,8 +23,10 @@ typical first run:
 
 afterwards:
 
+  shunt costs                write a readable bill for this repository, as Markdown
   shunt stats                what each delegation saved, per operation
   shunt report               what it saved across real sessions, from opencode's own books
+  shunt replay               try a threshold change against your own history, for free
   shunt doctor               run this whenever something feels wrong
 
 Every way this system breaks, it breaks quietly and in the expensive direction,
@@ -63,10 +65,23 @@ def build_parser() -> argparse.ArgumentParser:
 
     stats = add("stats", "Per-operation savings, from the shunt's own telemetry.")
     stats.add_argument("--since", help="ISO date, e.g. 2026-09-01")
+    stats.add_argument("--all-repos", action="store_true", help="every repository, not just this one")
 
     report = add("report", "Session-level savings, joined against opencode's accounting.")
     report.add_argument("--since", help="ISO date, e.g. 2026-09-01")
+    report.add_argument("--all-repos", action="store_true", help="every repository, not just this one")
     report.add_argument("--detail", action="store_true", help="one line per session")
+
+    costs = add("costs", "Write a readable Markdown bill for this repository.")
+    costs.add_argument("--out", help="file to write (default: shunt-costes.md in the repository)")
+    costs.add_argument("--days", type=int, help="only the last N days")
+    costs.add_argument("--all-repos", action="store_true", help="every repository, not just this one")
+    costs.add_argument("--stdout", action="store_true", help="print instead of writing a file")
+
+    replay = add("replay", "Re-judge recorded reads against a different threshold. Free.")
+    replay.add_argument("--floor", type=int, help="byte threshold to test, instead of the economic one")
+    replay.add_argument("--turns", type=int, help="assume content survives this many turns in context")
+    replay.add_argument("--all-repos", action="store_true", help="every repository, not just this one")
 
     bench = add("bench", "A/B the shunt on real questions. Slow and it costs money.")
     bench.add_argument("--repeat", type=int, default=1, help="runs per arm; medians are reported")
@@ -111,17 +126,50 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "stats":
         from .stats import main as stats_main
 
-        return stats_main(["--since", args.since] if args.since else [])
+        forwarded = [str(repo)]
+        if args.since:
+            forwarded += ["--since", args.since]
+        if args.all_repos:
+            forwarded.append("--all-repos")
+        return stats_main(forwarded)
 
     if args.command == "report":
         from .report import main as report_main
 
-        forwarded = []
+        forwarded = [str(repo)]
         if args.since:
             forwarded += ["--since", args.since]
+        if args.all_repos:
+            forwarded.append("--all-repos")
         if args.detail:
             forwarded.append("--detail")
         return report_main(forwarded)
+
+    if args.command == "costs":
+        from .costs import main as costs_main
+
+        forwarded = [str(repo)]
+        if args.out:
+            forwarded += ["--out", args.out]
+        if args.days:
+            forwarded += ["--days", str(args.days)]
+        if args.all_repos:
+            forwarded.append("--all-repos")
+        if args.stdout:
+            forwarded.append("--stdout")
+        return costs_main(forwarded)
+
+    if args.command == "replay":
+        from .replay import main as replay_main
+
+        forwarded = [str(repo)]
+        if args.floor:
+            forwarded += ["--floor", str(args.floor)]
+        if args.turns:
+            forwarded += ["--turns", str(args.turns)]
+        if args.all_repos:
+            forwarded.append("--all-repos")
+        return replay_main(forwarded)
 
     if args.command == "bench":
         from .bench import main as bench_main

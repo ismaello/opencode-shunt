@@ -63,6 +63,18 @@ export type Economics = {
    * real money and latency while the saving on it was near zero anyway.
    */
   safetyMargin: number
+  /**
+   * What the worker charges, per million tokens. Zero for a model on your own
+   * hardware, which is the only case where zero is the truth.
+   *
+   * Left out of this calculation entirely at first, which made delegation look
+   * free on the cheap side and biased every marginal decision towards
+   * delegating. It is not large - around a tenth of the saving at break-even
+   * with Flash - but it is the term whose omission always flatters the system,
+   * and those are the ones to be careful with.
+   */
+  workerInPerMillion: number
+  workerOutPerMillion: number
 }
 
 export const DEFAULT_ECONOMICS: Economics = {
@@ -76,6 +88,12 @@ export const DEFAULT_ECONOMICS: Economics = {
   expectedCompression: 0.13,
   charsPerToken: 2.9,
   safetyMargin: 1.2,
+  // Zero only because a config that predates these keys cannot say what its
+  // worker costs, and inventing a rate is worse than the status quo. `shunt
+  // config` writes the real ones, and `doctor` complains when a remote worker
+  // is running without them.
+  workerInPerMillion: 0,
+  workerOutPerMillion: 0,
 }
 
 export type Verdict = {
@@ -109,6 +127,8 @@ export function assess(
     expectedCompression,
     charsPerToken,
     safetyMargin,
+    workerInPerMillion,
+    workerOutPerMillion,
   } = economics
 
   const conversation = conversationTokens ?? assumedConversationTokens
@@ -120,24 +140,85 @@ export function assess(
   // Written to cache once, then re-sent on every turn that follows.
   const ratePerKeptToken = cacheWritePerMillion + cacheReadPerMillion * remainingTurns
   const saved = perMillion(keptOut, ratePerKeptToken)
-  const paid = perMillion(conversation * extraTurnsPerDelegation, cacheReadPerMillion)
 
-  // saved(chars) = paid, solved for chars.
+  // The worker reads all of it and writes the summary back, and both are
+  // billed. Proportional to the content, exactly like the saving, so it does
+  // not merely shift the break-even - it can remove it.
+  const workerRatePerToken =
+    (workerInPerMillion ?? 0) + (workerOutPerMillion ?? 0) * expectedCompression
+  const workerCost = perMillion(contentTokens, workerRatePerToken)
+
+  const paid = perMillion(conversation * extraTurnsPerDelegation, cacheReadPerMillion) + workerCost
+
+  // saved(chars) - workerCost(chars) = coordination, solved for chars.
+  const netRatePerToken = (1 - expectedCompression) * ratePerKeptToken - workerRatePerToken
   const breakEvenTokens =
-    (conversation * extraTurnsPerDelegation * cacheReadPerMillion) /
-    ((1 - expectedCompression) * ratePerKeptToken)
-  const breakEvenChars = Math.round(breakEvenTokens * charsPerToken * safetyMargin)
+    netRatePerToken <= 0
+      ? Infinity
+      : (conversation * extraTurnsPerDelegation * cacheReadPerMillion) / netRatePerToken
+  const breakEvenChars =
+    breakEvenTokens === Infinity
+      ? Infinity
+      : Math.round(breakEvenTokens * charsPerToken * safetyMargin)
 
   return {
     worthwhile: contentChars >= breakEvenChars,
     breakEvenChars,
     net: saved - paid,
     explain:
-      `keeping ~${Math.round(keptOut).toLocaleString()} tokens out of context saves ` +
-      `$${saved.toFixed(3)} (written to cache once, then re-sent for ~${remainingTurns} turns), ` +
-      `while the ${extraTurnsPerDelegation} extra round trips over a ` +
-      `~${(conversation / 1000).toFixed(0)}k conversation cost $${paid.toFixed(3)}`,
+      netRatePerToken <= 0
+        ? `the worker costs more per token than keeping the content out of context saves, ` +
+          `so delegating loses money at every size. Check the worker model in shunt.json.`
+        : `keeping ~${Math.round(keptOut).toLocaleString()} tokens out of context saves ` +
+          `$${saved.toFixed(3)} (written to cache once, then re-sent for ~${remainingTurns} turns), ` +
+          `while the ${extraTurnsPerDelegation} extra round trips over a ` +
+          `~${(conversation / 1000).toFixed(0)}k conversation plus the worker's own ` +
+          `$${workerCost.toFixed(4)} cost $${paid.toFixed(3)}`,
   }
+}
+
+/**
+ * Whether refusing a full re-read of an already-summarised file pays for itself.
+ *
+ * A refusal is not free advice: it costs the turn the model spends being told
+ * no and trying again, and turns are the dominant cost in this whole system. So
+ * the same arithmetic that decides whether to delegate has to decide whether to
+ * block, or the guard costs more than the waste it prevents.
+ *
+ * Measured before adding this. Blocking every re-read regardless of size turned
+ * a $0.25 review into $0.47: five refusals bought five extra turns to keep a few
+ * kilobytes out, and the files were far too small for that trade to work.
+ *
+ * The saving is partial, because the model comes back and reads part of the file
+ * anyway with offset and limit — that is the behaviour we want, not a failure.
+ * `targetedReadFraction` is how much of it a focused read pulls in; 0.5 is a
+ * guess with the sign right, and it makes the threshold conservative.
+ */
+export function worthBlocking(
+  contentChars: number,
+  economics: Economics,
+  conversationTokens?: number,
+  targetedReadFraction = 0.5,
+): { worthwhile: boolean; breakEvenChars: number } {
+  const {
+    cacheWritePerMillion,
+    cacheReadPerMillion,
+    assumedConversationTokens,
+    remainingTurns,
+    charsPerToken,
+    safetyMargin,
+  } = economics
+
+  const conversation = conversationTokens ?? assumedConversationTokens
+  const ratePerKeptToken = cacheWritePerMillion + cacheReadPerMillion * remainingTurns
+  const kept = 1 - targetedReadFraction
+
+  // One extra turn, not two: nothing is delegated here, the model simply reads
+  // differently. saved(chars) = paid, solved for chars.
+  const breakEvenTokens = (conversation * cacheReadPerMillion) / (kept * ratePerKeptToken)
+  const breakEvenChars = Math.round(breakEvenTokens * charsPerToken * safetyMargin)
+
+  return { worthwhile: contentChars >= breakEvenChars, breakEvenChars }
 }
 
 export function loadEconomics(overrides?: Partial<Economics>): Economics {

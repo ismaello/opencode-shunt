@@ -16,10 +16,21 @@ import pytest
 
 from opencode_shunt import paths
 
-SUITES = ["coverage", "economics", "guards"]
+def discover() -> list[str]:
+    """Find the suites on disk rather than listing them.
+
+    A hardcoded list is how a new suite ends up never running: it passes
+    locally, nobody adds it here, and CI reports green over a test it has
+    never executed.
+    """
+    return sorted(p.stem.removesuffix(".test") for p in paths.runtime().glob("tests/*.test.mjs"))
 
 
-@pytest.mark.parametrize("suite", SUITES)
+def test_suites_were_found():
+    assert discover(), "no runtime suites found; the package data is probably incomplete"
+
+
+@pytest.mark.parametrize("suite", discover())
 def test_runtime_suite(suite: str):
     node = shutil.which("node")
     if not node:

@@ -10,4 +10,4 @@ what the install manifest records, and what tells a repository its runtime is
 out of date.
 """
 
-__version__ = "3.0.0"
+__version__ = "3.4.0"

@@ -144,8 +144,13 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
+    parser.add_argument("repo", nargs="?", default=None, help="repository to report on")
     parser.add_argument("--model", help="substring of the orchestrator model, e.g. opus")
     parser.add_argument("--days", type=int, help="only sessions started in the last N days")
+    # The CLI has always advertised --since and this has always accepted only
+    # --days, so `shunt report --since` exited with a usage error.
+    parser.add_argument("--since", help="ISO date, e.g. 2026-09-01")
+    parser.add_argument("--all-repos", action="store_true", help="every repository, not just this one")
     parser.add_argument("--detail", action="store_true", help="one line per session")
     parser.add_argument(
         "--chars-per-token",
@@ -161,11 +166,27 @@ def main(argv: list[str] | None = None) -> int:
     cutoff = 0
     if args.days:
         cutoff = (datetime.now(timezone.utc) - timedelta(days=args.days)).timestamp() * 1000
+    if args.since:
+        try:
+            when = datetime.fromisoformat(args.since)
+        except ValueError:
+            return print(f"--since wants an ISO date like 2026-09-01, not {args.since!r}") or 2
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=timezone.utc)
+        cutoff = max(cutoff, when.timestamp() * 1000)
+
+    # Sessions from every repository share one database, so without this the
+    # report credits work done elsewhere to wherever you happen to be standing.
+    mine = None
+    if not args.all_repos:
+        mine = paths.sessions_in(paths.resolve_repo(args.repo))
 
     rows = []
     for sid, ops in operations.items():
         session = sessions.get(sid)
         if not session:
+            continue
+        if mine is not None and sid not in mine:
             continue
         if args.model and args.model.lower() not in session["model"].lower():
             continue

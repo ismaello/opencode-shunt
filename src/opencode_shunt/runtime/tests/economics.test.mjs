@@ -10,7 +10,7 @@
  * Run: node --experimental-strip-types --no-warnings tests/economics.test.mjs
  */
 
-import { DEFAULT_ECONOMICS, assess, loadEconomics } from "../lib/economics.ts"
+import { DEFAULT_ECONOMICS, assess, loadEconomics, worthBlocking } from "../lib/economics.ts"
 
 let failed = 0
 const ok = (name, condition, detail = "") => {
@@ -94,6 +94,35 @@ ok("the safety margin only ever raises the floor", noMargin.breakEvenChars < bas
 // A live conversation size must override the assumption.
 const live = assess(20_000, e, 500_000)
 ok("a live conversation size is used when given", !live.worthwhile, "20 KB refused in a 500k chat")
+
+// --- refusing a re-read of something already summarised ----------------------
+//
+// The guard against delegating and then reading the files anyway. It costs a
+// turn, so it has to earn that turn: blocking every re-read regardless of size
+// turned a measured $0.25 review into $0.47.
+
+const block = worthBlocking(0, e)
+ok("a re-read has a floor of its own", block.breakEvenChars > 0, `${kb(block.breakEvenChars)} KB`)
+ok("small files are not worth a refusal", !worthBlocking(3_000, e).worthwhile, "3 KB")
+ok("large ones are", worthBlocking(30_000, e).worthwhile, "30 KB")
+
+// Blocking buys one turn, delegating buys two plus a summary, so the floor for
+// a refusal must sit below the floor for a delegation or the guard never fires
+// on anything the delegation floor already let through.
+ok(
+  "refusing is a cheaper act than delegating",
+  block.breakEvenChars < assess(0, e).breakEvenChars,
+  `${kb(block.breakEvenChars)} KB vs ${kb(assess(0, e).breakEvenChars)} KB`,
+)
+
+ok(
+  "a longer conversation makes a refusal dearer, so the floor rises",
+  worthBlocking(0, e, 200_000).breakEvenChars > block.breakEvenChars,
+)
+ok(
+  "expecting the follow-up to read more of the file also raises it",
+  worthBlocking(0, e, undefined, 0.9).breakEvenChars > block.breakEvenChars,
+)
 
 console.log(failed ? `\n${failed} check(s) failed` : "\nall checks passed")
 process.exit(failed ? 1 : 0)

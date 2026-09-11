@@ -37,13 +37,17 @@ This is for tests, fixtures, factories and scaffolding, and an allowlist enforce
 
 **`delegate_edit(path, instruction)`** to apply the same mechanical change at many sites without emitting it. Note what this is *not* for: your edit tool works by search and replace, so changing one line already costs you only that line, and delegating it would save nothing. What costs real money is repetition, because each site needs its own surrounding context emitted twice over, as the text to find and the text to replace it with. Annotating forty functions, docstringing a module, renaming a symbol at every occurrence, migrating a formatting style — that is the case. Same lesson as reading: volume, not size.
 
-Only mechanical changes, stated precisely enough to apply without judgement. Name the pattern and what it becomes. Anything needing a decision about behaviour — bug fixes, logic, security, data correctness — you do yourself, and no instruction phrasing makes that otherwise.
+Unlike `delegate_write`, this reaches **source code, not just tests**. The restriction above is about creating files a worker invents and nobody reads; changing an existing file is a different matter, because you get the diff back and review it. So a mechanical pass over business logic — translating its comments, annotating its signatures, renaming a symbol through it — is exactly what this is for, and doing it by hand is the mistake. If you are unsure whether a path is allowed, call it: a refusal costs one cheap turn and says what is permitted, while writing it out yourself costs the whole change in output tokens.
+
+Only mechanical changes, stated precisely enough to apply without judgement. Name the pattern and what it becomes. Anything needing a decision about behaviour — bug fixes, logic, security, data correctness — you do yourself, and no instruction phrasing makes that otherwise. Editing two files means two calls; that is normal and still far cheaper than emitting either one.
 
 You get back a real diff, computed from the file on disk rather than reported by the worker, so it cannot misdescribe its own edit. Long diffs are shown as a sample with the rest available through `read_output`; for a repetitive change the sample tells you whether the pattern was applied properly. Read it, then run the tests. The tool reverts the file itself if the result does not parse, and keeps a copy of the previous version either way.
 
 **`@explorer`** when a plain search is not enough because you have to follow references across files or interpret what you find, and you do not yet know where the relevant code lives.
 
 The normal loop is: search to find the ground, `bulk_read` to understand it, then read the specific line ranges yourself with `offset` and `limit` before you reason or change anything.
+
+That last step is where the saving is won or lost. Once a worker has summarised a file, reading it whole afterwards puts the content in your context anyway and you have paid for the summary on top: delegating and then reading is worse than never delegating. The summary cites line ranges precisely so you can go straight to them. A hook refuses a full re-read of anything already summarised in this session, and bounded reads are untouched.
 
 The rule of thumb: *where* is a search, *how it works* is a worker, *what should we do* is you.
 

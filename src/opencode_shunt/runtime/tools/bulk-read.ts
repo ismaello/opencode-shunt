@@ -12,6 +12,7 @@ import {
 import { formatPathCheck, verifyPaths } from "../lib/verify-paths"
 import { readCoverage } from "../lib/coverage"
 import { assess, loadEconomics } from "../lib/economics"
+import { markCovered, prune } from "../lib/covered"
 
 const MAX_FILES = 20
 const MAX_BATCHES = 6
@@ -49,12 +50,28 @@ const BINARY_EXTENSIONS = new Set([
   ".woff", ".woff2", ".ttf", ".eot", ".mp3", ".mp4", ".mov", ".avi", ".wav",
 ])
 
+/**
+ * Answer size past which the delegation has failed at its purpose, as a
+ * fraction of the source it was given. A quarter is generous: measured median
+ * compression is 0.13, and anything approaching the size of the code is cheaper
+ * to read directly.
+ */
+const MAX_ANSWER_FRACTION = Number(process.env.SHUNT_MAX_ANSWER_FRACTION ?? 0.25)
+
+const COMPRESS_PROMPT = `You shorten a code analysis without losing what it found.
+
+Keep: every file path, every line number, every finding, every warning, the COVERAGE section.
+Cut: prose, restatement, explanation of what the code obviously does, quoted code beyond one line per finding, and anything the caller did not ask about.
+
+Output the shortened analysis and nothing else. No preamble, no note about having shortened it.`
+
 const SYSTEM_PROMPT = `You are a code analysis engine. You read source files and answer one specific question about them.
 
 The files are shown with line numbers in the form "NNN| code". Always cite line numbers copied from that gutter, never estimated.
 
 Rules:
 - Answer only the question asked. Ignore unrelated observations.
+- Stay within the character budget given with the question. It is not advice: an answer approaching the size of the code it describes is worthless, because the caller could have read the code for less. If the question is broad, answer the part that matters and say what you left out.
 - Never reproduce whole files. Quote at most 3 lines per finding.
 - Copy file paths exactly as they appear in the "=== FILE: ... ===" headers. Never reconstruct a path from the filename.
 - Prefer compact structured output over prose.
@@ -336,7 +353,7 @@ Use this whenever you know which files matter and they are large. Follow up by r
         const result = await callWorker(
           usedProfile.profile,
           SYSTEM_PROMPT,
-          `QUESTION: ${args.question}\n\n${renderBatch(batch)}`,
+          `QUESTION: ${args.question}\n\nCHARACTER BUDGET: ${Math.round((batch.reduce((n, c) => n + c.chars, 0) * MAX_ANSWER_FRACTION))}\n\n${renderBatch(batch)}`,
           context.abort,
         )
         promptTokens += result.promptTokens
@@ -381,7 +398,7 @@ Use this whenever you know which files matter and they are large. Follow up by r
         const result = await callWorker(
           usedProfile.profile,
           SYSTEM_PROMPT,
-          `QUESTION: ${args.question}\n\n${renderBatch(retryChunks)}`,
+          `QUESTION: ${args.question}\n\nCHARACTER BUDGET: ${Math.round(retryChars * MAX_ANSWER_FRACTION)}\n\n${renderBatch(retryChunks)}`,
           context.abort,
         )
         promptTokens += result.promptTokens
@@ -397,6 +414,35 @@ Use this whenever you know which files matter and they are large. Follow up by r
       } catch (error: any) {
         failures++
         combined += `\n\n### Second pass FAILED\nWorker error: ${error.message}`
+      }
+    }
+
+    // A summary longer than the code is not a summary, and this tool exists on
+    // the promise that it is. Observed: a broad question over 17.7 KB of source
+    // came back as 27.5 KB of prose, so the delegation cost a worker call and a
+    // round trip to put *more* in the expensive context than reading the files
+    // would have. The prompt asks for brevity; nothing enforced it.
+    const bloatCeiling = Math.round(totalBytes * MAX_ANSWER_FRACTION)
+    let compressed = 0
+    if (combined.length > bloatCeiling) {
+      const before = combined.length
+      try {
+        const result = await callWorker(
+          usedProfile.profile,
+          COMPRESS_PROMPT,
+          `Reduce this to at most ${bloatCeiling} characters.\n\n${combined}`,
+          context.abort,
+        )
+        promptTokens += result.promptTokens
+        outputTokens += result.outputTokens
+        // Only if it actually helped. A compression pass that grows the text is
+        // the same failure again, and the original at least answers the question.
+        if (result.text.length < before) {
+          combined = result.text
+          compressed = before - result.text.length
+        }
+      } catch {
+        // Returning a long answer beats returning none.
       }
     }
 
@@ -455,6 +501,18 @@ Use this whenever you know which files matter and they are large. Follow up by r
 
     const output = corrected + "\n" + footer
 
+    // So the read hook can tell a first read from a re-read of what it just
+    // summarised. Only what the worker accounted for: analysed, or examined and
+    // declared irrelevant.
+    //
+    // This used to pass every file it managed to read from disk, which put the
+    // tool at odds with itself - it printed "WARNING: x is unaccounted for" and
+    // in the same breath recorded x as covered, giving the read hook grounds to
+    // block the orchestrator from ever looking at it. The one file known to be
+    // missing evidence was the one hardest to get.
+    await markCovered(context.sessionID, worktree, [...analysed, ...notRelevant])
+    void prune()
+
     await logTelemetry({
       tool: "bulk_read",
       agent: context.agent,
@@ -465,6 +523,10 @@ Use this whenever you know which files matter and they are large. Follow up by r
       // units, so no tokeniser assumptions are needed to compare them.
       content_chars: totalBytes,
       returned_chars: output.length,
+      // Chars a second pass removed after the worker overran its budget. Zero
+      // is the normal case; a rising figure means the questions being asked are
+      // too broad for the tool to be paying for itself.
+      compressed_chars: compressed,
       profile: usedProfile.key,
       worker_model: usedProfile.profile.model,
       overflowed: usedProfile.key !== active.key,

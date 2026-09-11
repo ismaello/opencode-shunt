@@ -4,6 +4,9 @@ import path from "node:path"
 import os from "node:os"
 import { loadConfig, resolveProfile } from "../lib/worker"
 import { summariseOutput } from "../lib/output-shunt"
+import { wasCovered } from "../lib/covered"
+import { loadEconomics, worthBlocking } from "../lib/economics"
+import { resolveWorktree } from "../lib/worktree"
 
 // "enforce" blocks expensive reads, "observe" only records them.
 const MODE = (process.env.SHUNT_MODE ?? "enforce") as "enforce" | "observe"
@@ -105,13 +108,25 @@ function bulkTargets(command: string): string[] {
   return targets
 }
 
-export const ShuntPlugin: Plugin = async ({ worktree }) => {
+export const ShuntPlugin: Plugin = async (input) => {
+  const { root: worktree, given, recovered } = await resolveWorktree(input.worktree)
+  if (recovered) {
+    await logTelemetry({
+      event: "worktree-recovered",
+      given,
+      using: worktree,
+      note: "Relative file paths would not have resolved from the given root. Exemptions and economics come from here instead.",
+    })
+  }
   // tool.execute.before only receives { tool, sessionID, callID }, with no agent
   // or model. chat.params fires before every LLM call and does carry both, so we
   // build the mapping there and look it up when a tool runs. Subagents get their
   // own child sessionID, which is what keeps them out of the shunt.
   const sessions = new Map<string, SessionInfo>()
   const isExempt = buildExemptMatcher(await loadExempt(worktree))
+  // Read once: the repository's own habits, which is what makes a threshold
+  // here a measurement rather than a guess.
+  const economics = loadEconomics((await loadConfig(worktree)).economics)
 
   const guidance = (what: string, detail: string) =>
     new Error(
@@ -137,7 +152,23 @@ export const ShuntPlugin: Plugin = async ({ worktree }) => {
       const session = sessions.get(input.sessionID)
       // Fail open: an unknown session is more likely a startup race than an
       // attempt to dodge the shunt, and a false block is worse than a miss.
-      if (!session) return
+      //
+      // But record the miss. Returning silently here made a read that bypassed
+      // the shunt entirely indistinguishable from one that never happened,
+      // which is the exact failure this project exists to remove. Observed
+      // once for real: a Gemini Pro session made a single read, chat.params
+      // had not yet populated the map, and the whole session produced no
+      // telemetry at all - the same empty report a broken install gives.
+      if (!session) {
+        await logTelemetry({
+          tool: input.tool,
+          sessionID: input.sessionID,
+          mode: MODE,
+          verdict: "session-unknown",
+          bytes: null,
+        })
+        return
+      }
       if (isExempt(session.providerID, session.modelID, session.agent)) return
 
       const record = (verdict: string, extra: Record<string, unknown>) =>
@@ -162,16 +193,56 @@ export const ShuntPlugin: Plugin = async ({ worktree }) => {
           return
         }
 
+        // Both exits below used to be a bare `return`. A read the shunt could
+        // not size is a read it let through without applying any rule, and
+        // saying nothing about it made that indistinguishable from a read that
+        // never happened. Measured on a real session: every read in it
+        // vanished this way, and the empty report that produced is exactly what
+        // a broken install looks like.
         let size: Awaited<ReturnType<typeof measure>>
+        const resolved = path.resolve(worktree, filePath)
         try {
-          size = await measure(path.resolve(worktree, filePath))
-        } catch {
+          size = await measure(resolved)
+        } catch (error: any) {
+          await record("measure-failed", { file: filePath, resolved, error: String(error?.code ?? error) })
           return
         }
-        if (!size) return
+        if (!size) {
+          await record("not-a-file", { file: filePath, resolved })
+          return
+        }
 
         const tooBig = size.bytes > MAX_BYTES || size.lines > MAX_LINES
         if (!tooBig) {
+          // A file the worker already summarised for this session is the one
+          // case where a small read is still wasteful: the delegation was paid
+          // for, and reading the file in full afterwards throws the saving away
+          // and leaves the context holding both. Targeted reads stay open —
+          // this only asks for the offset and limit the summary's line ranges
+          // already give.
+          //
+          // Only worth saying so when the file is big enough to justify the turn
+          // the refusal costs. Blocking indiscriminately made a review dearer,
+          // not cheaper, which is the same lesson the delegation floor teaches.
+          const verdict = worthBlocking(size.bytes, economics)
+          if (verdict.worthwhile && (await wasCovered(input.sessionID, worktree, filePath))) {
+            await record(MODE === "enforce" ? "block-covered" : "observe-would-block-covered", {
+              file: filePath,
+              break_even_chars: verdict.breakEvenChars,
+              ...size,
+            })
+            if (MODE === "enforce") {
+              throw new Error(
+                `SHUNT: refusing to re-read ${filePath} in full (${size.lines} lines).\n` +
+                  `A worker already summarised this file for you in this session, and you paid ` +
+                  `for that call. Reading it whole now puts the content in your context anyway, ` +
+                  `which is the cost the summary was meant to avoid.\n` +
+                  `  - read with offset/limit for the lines the summary cited, or\n` +
+                  `  - bulk_read again with a sharper question if the summary missed something.`,
+              )
+            }
+            return
+          }
           await record("allow-small", { file: filePath, ...size })
           return
         }

@@ -35,6 +35,14 @@ from . import paths
 EXCLUDE_DIRS = {"node_modules", "__pycache__", "tests"}
 EXCLUDE_FILES = {"package-lock.json", "bun.lock", paths.LOCAL_CONFIG, "shunt.local.example.json"}
 
+# Scaffolded once and owned by the repository afterwards. We ship a starting
+# point; 'shunt config' then writes the real thing into it, and an update must
+# not take that back. Found the hard way: 'shunt update --force' replaced a
+# configured shunt.json with the shipped template, which left writerProfile
+# unset, which made every delegated edit fail against a model that was never
+# chosen. A .bak is not a defence, because nothing tells you to go looking.
+CONFIG_FILES = {"shunt.json"}
+
 GITIGNORE_ENTRIES = [
     "node_modules",
     "package.json",
@@ -70,6 +78,10 @@ def shipped_files() -> dict[str, pathlib.Path]:
 def classify(source: pathlib.Path, target: pathlib.Path, recorded: str | None) -> str:
     if not target.exists():
         return "new"
+    # Present means configured. Whatever it says now is what this repository
+    # decided, and no version comparison outranks that.
+    if str(target.name) in CONFIG_FILES:
+        return "config"
     current = sha256(target)
     if current == sha256(source):
         return "current"
@@ -91,7 +103,14 @@ def read_manifest(destination: pathlib.Path) -> dict:
         return {}
 
 
-def write_manifest(destination: pathlib.Path, files: dict[str, pathlib.Path]) -> None:
+def write_manifest(
+    destination: pathlib.Path,
+    files: dict[str, pathlib.Path],
+    keep: dict[str, str] | None = None,
+) -> None:
+    """Record what is on disk. `keep` carries forward entries we did not write."""
+    recorded = {name: sha256(files[name]) for name in files}
+    recorded.update(keep or {})
     (destination / paths.MANIFEST_NAME).write_text(
         json.dumps(
             {
@@ -99,7 +118,7 @@ def write_manifest(destination: pathlib.Path, files: dict[str, pathlib.Path]) ->
                 "installedAt": datetime.now(timezone.utc).isoformat(),
                 # Hashes of what we just placed, which is what lets the next run
                 # tell an old file from an edited one.
-                "files": {name: sha256(files[name]) for name in sorted(files)},
+                "files": {name: recorded[name] for name in sorted(recorded)},
             },
             indent=2,
         )
@@ -163,7 +182,14 @@ def install(
     shipping = paths.version()
 
     files = shipped_files()
-    plan: dict[str, list[str]] = {"new": [], "current": [], "outdated": [], "modified": [], "unknown": []}
+    plan: dict[str, list[str]] = {
+        "new": [],
+        "current": [],
+        "outdated": [],
+        "modified": [],
+        "unknown": [],
+        "config": [],
+    }
     for relative, source in sorted(files.items()):
         plan[classify(source, destination / relative, recorded.get(relative))].append(relative)
 
@@ -182,6 +208,10 @@ def install(
                 print(f"{label}:")
                 for name in plan[state]:
                     print(f"  {name}")
+        if plan["config"]:
+            print("yours, left alone:")
+            for name in plan["config"]:
+                print(f"  {name}")
         if plan["current"]:
             print(f"already current: {len(plan['current'])} files")
         if orphans:
@@ -217,7 +247,14 @@ def install(
         shutil.copy2(files[relative], target)
 
     destination.mkdir(parents=True, exist_ok=True)
-    write_manifest(destination, files)
+    # Record the shipped hash only for what was actually written. Claiming we
+    # installed the template over a config file we deliberately left alone would
+    # make the next run see the user's own configuration as an outdated file.
+    write_manifest(
+        destination,
+        {k: v for k, v in files.items() if k not in plan["config"]},
+        keep={k: v for k, v in recorded.items() if k in plan["config"]},
+    )
     note = update_gitignore(destination)
 
     if not quiet:

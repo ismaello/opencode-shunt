@@ -1,0 +1,112 @@
+name: ci
+
+on:
+  push:
+    # Both, because this repository is on master and guessing wrong means the
+    # workflow never runs at all - which is what happened, silently, for as
+    # long as it existed.
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  python:
+    # The floor declared in pyproject is 3.10, and a declared floor that nobody
+    # runs is a guess. This is the only thing that makes it a fact.
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12", "3.13"]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install -e ".[dev]"
+      - run: pytest -q
+
+  runtime:
+    # The TypeScript is the actual product; the Python only installs it. Its
+    # tests run under Node with no dependencies to install.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: |
+          for test in src/opencode_shunt/runtime/tests/*.test.mjs; do
+            echo "--- $test"
+            node "$test"
+          done
+
+  install:
+    # Builds the wheel and installs it into a clean environment, then runs the
+    # commands a new user runs first. This is the check that caught a broken
+    # licence field and a doctor that credited a fresh repository with work
+    # done elsewhere; neither showed up in the unit tests.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install build && python -m build
+      - run: pip install dist/*.whl
+      - name: a fresh repository, from nothing
+        run: |
+          mkdir -p /tmp/fresh/src && cd /tmp/fresh
+          echo "def hello(): return 1" > src/app.py
+          shunt --version
+          shunt init
+          shunt config --dry-run
+          # doctor exits non-zero on an unconfigured repo, which is correct.
+          shunt doctor || true
+          shunt stats
+          shunt costs --stdout
+      - name: the runtime lands where OpenCode looks for it
+        run: |
+          test -f /tmp/fresh/.opencode/plugins/shunt.ts
+          test -f /tmp/fresh/.opencode/tools/bulk-read.ts
+          test -f /tmp/fresh/.opencode/lib/economics.ts
+          test -f /tmp/fresh/.opencode/agents/orchestrator.md
+
+  npx:
+    # The npm package carries the Python wheel inside it, so it can go stale
+    # against the Python version without anything complaining. This builds it
+    # the way `prepare.py` does and runs it the way a user would.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: pip install build
+      - run: python npm/prepare.py --pack
+      - name: the versions agree
+        run: |
+          python - <<'EOF'
+          import json, pathlib, re
+          npm = json.loads(pathlib.Path("npm/package.json").read_text())["version"]
+          src = pathlib.Path("src/opencode_shunt/__init__.py").read_text()
+          py = re.search(r'__version__\s*=\s*["\']([^"\']+)["\']', src).group(1)
+          assert npm == py, f"npm says {npm}, python says {py}"
+          wheels = [p.name for p in pathlib.Path("npm/dist").glob("*.whl")]
+          assert any(py in w for w in wheels), f"wheel {wheels} is not {py}"
+          print(f"both at {py}")
+          EOF
+      - name: npx, from an empty cache
+        run: |
+          mkdir -p /tmp/vianpx && cd /tmp/vianpx
+          TARBALL=$(ls /home/runner/work/*/*/npm/opencode-shunt-*.tgz)
+          npx --yes --package="$TARBALL" opencode-shunt --version
+          npx --yes --package="$TARBALL" opencode-shunt init
+          test -f /tmp/vianpx/.opencode/plugins/shunt.ts
+          # doctor must still exit non-zero through the wrapper, because
+          # scripts gate on it.
+          if npx --yes --package="$TARBALL" opencode-shunt doctor; then
+            echo "doctor should have failed on an unconfigured repo"; exit 1
+          fi

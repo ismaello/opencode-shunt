@@ -9,7 +9,7 @@
     "**/fixtures/**"
   ],
 
-  "_editPaths": "Files delegate_edit may modify. Defaults to writePaths. Widen this deliberately: it lets a worker model change code that already works and that people rely on.",
+  "_editPaths": "Files delegate_edit may modify. Wider than writePaths on purpose, and defaults to source code: an edit comes back as a diff of exactly what moved, after a backup, a size limit and a parser run, so the orchestrator reviews the change. Creating a file it never sees is the riskier act, not changing one it does. Holding edits to the test-only list was measured costing 39% on a real mechanical task. Regardless of what you put here, no worker can touch CI definitions, migrations, lockfiles or .opencode/ itself.",
 
   "_bulkExempt": "Sessions allowed to read freely, because they are cheap. Entries are a provider ('ollama') or a specific model ('google-vertex/gemini-2.5-flash'). This is the most important list in the system and the easiest to get wrong in both directions: leave a worker out and it cannot do its job, put your orchestrator in and the whole system silently stops working. 'shunt doctor' checks both.",
   "bulkExempt": [

@@ -7,3 +7,10 @@ dist/
 *.egg-info/
 .pytest_cache/
 node_modules/
+
+# Built by npm/prepare.py from the Python package. Committing these would let
+# the npm package drift from the wheel inside it, which is the one failure that
+# version is supposed to prevent.
+npm/dist/
+npm/LICENSE
+npm/*.tgz

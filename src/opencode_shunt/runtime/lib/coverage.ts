@@ -28,6 +28,32 @@ const IRRELEVANT =
 /** Where the coverage list stops and the findings begin. */
 const SECTION_END = /^\s*#{1,3}\s|^\s*\**\s*(UNCERTAIN|FINDINGS)\b/i
 
+/** Characters that can sit inside a path, so finding one next to a match means
+ * the match is part of a longer name. */
+const PATH_CHAR = /[A-Za-z0-9._/\\-]/
+
+/**
+ * Whether the text names this exact path, rather than merely containing its
+ * letters.
+ *
+ * A plain substring test reads "tests/test_foo.py: analysed" as coverage of
+ * "foo.py", and "src/a.py" as coverage of "a.py". Both mark a file the worker
+ * never looked at as accounted for, and the read hook then has grounds to
+ * block the orchestrator from reading it. The failure is silent and points the
+ * wrong way: it hides evidence rather than surfacing it.
+ */
+export function mentions(text: string, target: string): boolean {
+  let from = 0
+  for (;;) {
+    const at = text.indexOf(target, from)
+    if (at === -1) return false
+    const before = at === 0 ? "" : text[at - 1]
+    const after = text[at + target.length] ?? ""
+    if (!PATH_CHAR.test(before) && !PATH_CHAR.test(after)) return true
+    from = at + 1
+  }
+}
+
 export function readCoverage(text: string, expected: string[]): Coverage {
   const lines = text.split("\n")
   const start = lines.findIndex((line) => /^\s*[#*\s]*COVERAGE\s*:?\s*$|^\s*[#*\s]*COVERAGE\s*:/i.test(line))
@@ -47,14 +73,14 @@ export function readCoverage(text: string, expected: string[]): Coverage {
   const missing: string[] = []
 
   for (const path of expected) {
-    const line = block.find((candidate) => candidate.includes(path))
+    const line = block.find((candidate) => mentions(candidate, path))
     if (line) {
       ;(IRRELEVANT.test(line) ? notRelevant : analysed).push(path)
       continue
     }
     // Some models drop the section but still discuss the files plainly. Treating
     // that as a miss would spend a second call re-reading what was already read.
-    if (start === -1 && text.includes(path)) {
+    if (start === -1 && mentions(text, path)) {
       analysed.push(path)
       continue
     }

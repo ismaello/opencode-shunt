@@ -175,9 +175,42 @@ def check_config(repo: pathlib.Path, report: Report) -> tuple[dict, dict]:
     if shared is None and not shared_error:
         report.warn("no shunt.json", "The runtime falls back to built-in defaults.")
 
+    if shared and shared.get("profiles"):
+        # Before the two files were split, everything lived in shunt.json. An
+        # update leaves that alone, correctly - it is the user's configuration -
+        # but the result is a working install running policy nobody would write
+        # today, and nothing says so. The specific costs, both measured on this
+        # project: editPaths defaulted to tests only, which stopped the tool
+        # with the largest measured saving from touching source; and the
+        # orchestrator's cache prices are absent, so the delegation floor is
+        # computed from Anthropic defaults whoever is actually orchestrating.
+        report.warn(
+            "shunt.json still holds worker profiles, which means it predates the config split",
+            "Profiles are machine-specific and belong in shunt.local.json, which is\n"
+            "gitignored; here they are in the file you commit, project ids and all.\n"
+            "A config from that era is also missing the wider editPaths default and the\n"
+            "orchestrator's cache prices.\n"
+            "Run: shunt config     (it rewrites both files and keeps your policy choices)",
+        )
+
     merged = {**(shared or {}), **(local or {})}
-    # Profiles merge one level deep, matching loadConfig in runtime/lib/worker.ts.
-    profiles = {**(shared or {}).get("profiles", {}), **(local or {}).get("profiles", {})}
+    # Merge *into* each profile, which is what loadConfig in runtime/lib/worker.ts
+    # does, and the whole reason the two files can be split: shunt.json carries
+    # the model and kind, shunt.local.json adds only the project or baseURL.
+    #
+    # This used to replace the profile wholesale, and the comment above it
+    # claimed to match the runtime while doing the opposite. It is worth spelling
+    # out what that cost, because it is not the obvious cosmetic complaint. A
+    # profile split across the two files came out holding nothing but "project",
+    # so it had no "kind" - and every branch of the credential check is selected
+    # by kind. None matched, so doctor checked no credentials at all and said
+    # nothing about having skipped it, while reporting the profile as fine. A
+    # health check that passes an unverified profile in silence is worse than no
+    # health check, because it is believed.
+    profiles: dict[str, dict] = {}
+    for layer in ((shared or {}).get("profiles", {}), (local or {}).get("profiles", {})):
+        for name, profile in (layer or {}).items():
+            profiles[name] = {**profiles.get(name, {}), **(profile or {})}
     merged["profiles"] = profiles
 
     # A fresh install has policy but no profiles, which is a state to explain
@@ -268,13 +301,37 @@ def check_credentials(merged: dict, profiles: dict, report: Report) -> None:
                 )
         elif kind == "ollama":
             url = profile.get("baseURL", "http://127.0.0.1:11434")
-            if _ollama_up(url):
-                report.ok(f'profile "{name}" reached Ollama', url)
-            else:
+            available = _ollama_models(url)
+            if available is None:
                 report.fail(
                     f'profile "{name}" cannot reach Ollama at {url}',
                     "Start it with: ollama serve",
                 )
+                continue
+            # Reaching the server is not the check that matters. Ollama answers
+            # /api/tags happily and then 404s the generate call for a model it
+            # was never given, and the orchestrator reads that as "the worker is
+            # down" and does the work itself, at full price and in silence.
+            wanted = profile.get("model", "")
+            if wanted in available:
+                report.ok(f'profile "{name}" has {wanted} loaded', url)
+            else:
+                report.fail(
+                    f'profile "{name}" wants {wanted}, which Ollama does not have',
+                    f"Every delegation to this profile will fail with a 404 and the work will\n"
+                    f"fall back to your expensive model.\n"
+                    f"Run: ollama pull {wanted}\n"
+                    f"Available now: {', '.join(sorted(available)) or 'nothing'}",
+                )
+        else:
+            # Every branch above is selected by "kind", so an unrecognised one
+            # means nothing was verified. Saying so is the point: this check
+            # exists to catch silent problems and must not become one.
+            report.fail(
+                f'profile "{name}" has no recognised kind, so nothing about it was checked',
+                f"Found kind={kind!r}. Expected one of vertex, ollama, openai-compatible.\n"
+                "Usually a config written by an older version. Run: shunt config",
+            )
 
 
 def _where_from(variable: str) -> str:
@@ -306,15 +363,26 @@ def _vertex_token() -> bool:
     return False
 
 
-def _ollama_up(url: str) -> bool:
+def _ollama_models(url: str) -> set[str] | None:
+    """Model names Ollama actually has, or None if it cannot be reached."""
     import urllib.error
     import urllib.request
 
     try:
         with urllib.request.urlopen(f"{url.rstrip('/')}/api/tags", timeout=5) as response:
-            return response.status == 200
-    except (urllib.error.URLError, OSError, ValueError):
-        return False
+            if response.status != 200:
+                return None
+            payload = json.loads(response.read())
+    except (urllib.error.URLError, OSError, ValueError, json.JSONDecodeError):
+        return None
+
+    names: set[str] = set()
+    for model in payload.get("models") or []:
+        if name := model.get("name"):
+            names.add(name)
+            # "qwen3-coder:30b" is also addressable as "qwen3-coder".
+            names.add(name.split(":")[0])
+    return names
 
 
 def check_roles(repo: pathlib.Path, merged: dict, report: Report) -> None:
@@ -346,11 +414,45 @@ def check_roles(repo: pathlib.Path, merged: dict, report: Report) -> None:
     else:
         report.ok(f"orchestrator {orchestrator} is subject to the shunt")
 
+    # OpenCode reads agents/orchestrator.md; shunt.json's _roles is only what
+    # the wizard recorded. When they disagree, somebody edited one by hand, and
+    # the damage is not the mismatch itself but what hangs off it: the
+    # economics block was priced for the model in _roles, so the delegation
+    # floor belongs to a model that is not running.
+    #
+    # Found by making the mistake: changing _roles to a model twice the price
+    # and getting "everything checks out" while the old model still ran.
+    declared = (merged.get("_roles") or {}).get("orchestrator")
+    if declared and declared != orchestrator:
+        report.fail(
+            "the configured orchestrator is not the one that runs",
+            f"agents/orchestrator.md runs {orchestrator}, but shunt.json records {declared}.\n"
+            f"The delegation floor in shunt.json was priced for {declared}, so it is wrong\n"
+            f"for {orchestrator} by whatever the two differ in cache pricing.\n"
+            "Fix: run 'shunt config' to set both together, rather than editing either.",
+        )
+
     workers = {
         profile.get("model", "")
         for key, profile in merged.get("profiles", {}).items()
         if key in (merged.get("profile"), merged.get("writerProfile"))
     }
+
+    # The delegation floor used to ignore what the worker itself charges, which
+    # made the cheap side look free and nudged every marginal call into
+    # delegating. A config written before those keys existed still behaves that
+    # way, and silently.
+    reader = (merged.get("profiles") or {}).get(merged.get("profile") or "") or {}
+    reader_is_remote = bool(reader.get("baseUrl") or reader.get("kind") in {"vertex", "openai", "anthropic"})
+    economics_block = merged.get("economics") or {}
+    if reader_is_remote and "workerInPerMillion" not in economics_block:
+        report.warn(
+            "the delegation floor does not account for what the worker costs",
+            f'The reader "{reader.get("model", "?")}" is a paid remote model, but shunt.json\n'
+            "has no workerInPerMillion, so delegating is being priced as though the worker\n"
+            "were free. The floor comes out roughly 10% too low.\n"
+            "Fix: run 'shunt config' to add it.",
+        )
     for model in filter(None, workers):
         # A worker that gets blocked from reading cannot do its job, and the
         # design depends on this exemption more than on any other rule.
@@ -419,6 +521,37 @@ def check_activity(repo: pathlib.Path, report: Report) -> None:
             except json.JSONDecodeError:
                 continue
 
+    # Telemetry is one file per machine. Reporting all of it in a repository
+    # that has never been used makes doctor announce savings earned elsewhere,
+    # which is the one thing this command cannot afford to do.
+    mine = paths.sessions_in(repo)
+    scoped = mine is not None
+    if scoped:
+        rows = [r for r in rows if r.get("sessionID") in mine]
+        if not rows:
+            report.info(
+                "nothing has run in this repository yet",
+                "Telemetry exists for other repositories, but none of it was earned here.\n"
+                "A broken install and an unused one look the same at this point, which is\n"
+                "why the checks above matter more than this one.",
+            )
+            return
+
+    # Reads the hook saw but could not attribute to a session, so it let them
+    # through unjudged. A few are the normal startup race. A large share means
+    # the shunt is mostly a spectator, and before this was recorded at all the
+    # symptom was an empty report - identical to a broken install.
+    unknown = [r for r in rows if r.get("verdict") == "session-unknown"]
+    reads = [r for r in rows if r.get("tool") == "read"]
+    if unknown and len(unknown) >= max(2, 0.2 * len(reads)):
+        report.warn(
+            f"{len(unknown)} of {len(reads)} reads bypassed the shunt unjudged",
+            "The plugin could not tell which model was reading, so it allowed the read\n"
+            "without applying any rule. It fails open on purpose, but at this rate the\n"
+            "shunt is watching rather than working, and the savings below understate\n"
+            "nothing - they are simply not being earned on those reads.",
+        )
+
     delegations = [r for r in rows if r.get("tool") in ("bulk_read", "delegate_write", "delegate_edit")]
     blocks = [r for r in rows if r.get("verdict") in ("block", "observe-would-block")]
     if not delegations and not blocks:
@@ -448,10 +581,26 @@ def check_activity(repo: pathlib.Path, report: Report) -> None:
 
     failures = [r for r in rows if str(r.get("event", "")).endswith(("failed", "error"))]
     if failures:
-        report.warn(
-            f"{len(failures)} worker call(s) failed",
-            "Latest: " + str(failures[-1].get("error", ""))[:160],
-        )
+        # Only failures with no successful delegation after them are news. The
+        # log keeps every failure the install has ever had, so reporting the
+        # count outright means a problem fixed weeks ago still warns today -
+        # which teaches you to ignore this command, and it is the one command
+        # here that must be believed.
+        last_failure = failures[-1].get("ts", "")
+        last_success = delegations[-1].get("ts", "") if delegations else ""
+        when = str(last_failure)[:16].replace("T", " ")
+        if last_success and last_success > last_failure:
+            report.info(
+                f"{len(failures)} worker call(s) have failed historically, most recently {when}",
+                "Delegations have succeeded since, so this is history rather than a fault.",
+            )
+        else:
+            report.warn(
+                f"worker calls are failing, most recently {when} ({len(failures)} in total)",
+                "Latest: "
+                + str(failures[-1].get("error", ""))[:160]
+                + "\nA failed delegation returns the work to the expensive model in silence.",
+            )
 
 
 def check_database(report: Report) -> None:

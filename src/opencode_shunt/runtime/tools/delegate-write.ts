@@ -25,10 +25,12 @@ import {
 } from "../lib/worker"
 import {
   DEFAULT_WRITE_PATHS,
+  applyVerified,
   backup,
   checkSyntax,
   extractSymbols,
   isAllowed,
+  isForbidden,
   leaksSecret,
   logTelemetry,
   looksSecret,
@@ -96,6 +98,21 @@ Do NOT use this for business logic, or for edits to a file that already exists a
 
     if (looksSecret(target.displayPath)) {
       return `delegate_write refused: ${target.displayPath} looks like a secret or credential file.`
+    }
+
+    if (isForbidden(target.displayPath)) {
+      await logTelemetry({
+        tool: "delegate_write",
+        event: "refused-forbidden",
+        agent: context.agent,
+        sessionID: context.sessionID,
+        target: target.displayPath,
+      })
+      return (
+        `delegate_write refused: ${target.displayPath} is off limits to workers regardless of ` +
+        `configuration. CI definitions, migrations, lockfiles and the shunt's own policy are ` +
+        `yours to write.`
+      )
     }
 
     if (!isAllowed(target.displayPath, allowed)) {
@@ -237,14 +254,40 @@ Do NOT use this for business logic, or for edits to a file that already exists a
     let backedUp: string | null = null
     if (previous !== null) backedUp = await backup(target.displayPath, previous)
 
-    try {
-      await fs.mkdir(path.dirname(target.absolute), { recursive: true })
-      await fs.writeFile(target.absolute, body, "utf8")
-    } catch (error: any) {
-      return `delegate_write failed: could not write ${target.displayPath} (${error.message}).`
+    const applied = await applyVerified(worktree, target, previous, body)
+    if (!applied.ok) {
+      await logTelemetry({
+        tool: "delegate_write",
+        event: `refused-${applied.kind}`,
+        agent: context.agent,
+        sessionID: context.sessionID,
+        target: target.displayPath,
+        worker_model: active.profile.model,
+        detail: applied.detail.slice(0, 200),
+      })
+
+      if (applied.kind === "changed-underneath") {
+        return (
+          `delegate_write refused: ${target.displayPath} ${previous === null ? "was created" : "changed"} ` +
+          `on disk while the worker was answering, so writing now would have discarded that. ` +
+          `Nothing was written.`
+        )
+      }
+      if (applied.kind === "syntax") {
+        // Previously the file went to disk first and a failed parse was merely
+        // reported, which left generated code that does not compile sitting in
+        // the repository for someone to trip over later.
+        return (
+          `delegate_write failed: the generated file did not parse, so it was never written.\n\n` +
+          `${applied.detail}\n\n` +
+          `${target.displayPath} is ${previous === null ? "not created" : "unchanged"}.` +
+          (backedUp ? ` The rejected version is at ${backedUp.replace(/__/, "__rejected__")}.` : "")
+        )
+      }
+      return `delegate_write failed: could not write ${target.displayPath} (${applied.detail}).`
     }
 
-    const syntax = await checkSyntax(worktree, target.absolute)
+    const syntax = applied.syntax
     const symbols = extractSymbols(body)
     const lines = body.split("\n").length
 
@@ -253,11 +296,13 @@ Do NOT use this for business logic, or for edits to a file that already exists a
       `by ${active.profile.model} (profile ${active.key}) in ${((Date.now() - startedAt) / 1000).toFixed(1)}s.`,
       `Its body did not pass through your context, saving roughly ${Math.round(body.length / 3.5)} output tokens.`,
       "",
+      // A failure cannot reach here any more: it is caught on a temporary copy
+      // and the write is refused, so the repository never holds the bad
+      // version. "not checked" still can, and matters - it is the case where
+      // nothing at all has verified the file.
       syntax.status === "ok"
         ? `SYNTAX: ok (${syntax.detail})`
-        : syntax.status === "failed"
-          ? `SYNTAX: FAILED. ${syntax.detail}\nThe file is on disk but does not parse. Read the reported lines and fix them, or delete it.`
-          : `SYNTAX: not checked (${syntax.detail}). Nothing has verified this file yet.`,
+        : `SYNTAX: not checked (${syntax.detail}). Nothing has verified this file yet.`,
       symbols.length
         ? `DEFINES: ${symbols.slice(0, 30).join(", ")}${symbols.length > 30 ? ` (+${symbols.length - 30} more)` : ""}`
         : `DEFINES: no functions or classes detected, which is suspicious for a generated test file.`,

@@ -1,5 +1,7 @@
 [build-system]
-requires = ["setuptools>=68"]
+# 77 rather than 68: PEP 639 licence metadata, which is what PyPI now wants and
+# what lets the LICENSE file travel inside the wheel.
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,18 +10,31 @@ dynamic = ["version"]
 description = "Keep bulk work off your expensive model, in any OpenCode repository"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 keywords = ["opencode", "llm", "tokens", "cost", "claude", "gemini", "ollama"]
 classifiers = [
   "Environment :: Console",
   "Intended Audience :: Developers",
+  # No licence classifier: PEP 639 expresses it in the `license` field above,
+  # and having both is now rejected.
+  "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Topic :: Software Development :: Code Generators",
 ]
 
 # Deliberately none. Everything here is argparse, json, sqlite3 and pathlib, so
 # installing this can never break somebody's environment or fight their pins.
 dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/ismaello/opencode-shunt"
+Documentation = "https://github.com/ismaello/opencode-shunt#readme"
+Issues = "https://github.com/ismaello/opencode-shunt/issues"
 
 [project.scripts]
 shunt = "opencode_shunt.cli:main"

@@ -24,10 +24,12 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { callWorker, loadConfig, resolveProfile, type WorkerProfile } from "../lib/worker"
 import {
-  DEFAULT_WRITE_PATHS,
+  DEFAULT_EDIT_PATHS,
+  applyVerified,
   backup,
   checkSyntax,
   isAllowed,
+  isForbidden,
   leaksSecret,
   logTelemetry,
   looksAbbreviated,
@@ -77,7 +79,7 @@ export default tool({
 
 Output tokens are the most expensive thing you produce, so this is for changes that would otherwise have you emit many search-and-replace pairs: adding type annotations throughout a module, adding docstrings to every public function, renaming a symbol at every site, migrating a formatting style. You get back a real diff, computed here rather than reported by the model, plus a syntax check.
 
-Do NOT use this for a single edit, where it saves nothing, nor for anything requiring judgement about behaviour: bug fixes, logic changes, security or data correctness. Those are yours. Restricted by an allowlist.`,
+This reaches source code, not only tests: you review the diff it returns, so a mechanical pass over business logic is a normal use. What it is not for is a single edit, where it saves nothing, or anything needing judgement about behaviour — bug fixes, logic changes, security, data correctness. Those are yours. An allowlist has the final say and a refusal names what it permits.`,
   args: {
     path: tool.schema.string().describe("Repository-relative path of the file to edit."),
     instruction: tool.schema
@@ -94,9 +96,10 @@ Do NOT use this for a single edit, where it saves nothing, nor for anything requ
     if (!args.instruction?.trim()) return "delegate_edit error: no instruction given."
 
     const config = await loadConfig(worktree)
-    // Editing existing code is riskier than creating a test, so it defaults to
-    // the same test-only allowlist. Widening it is a deliberate per-repo choice.
-    const allowed = config.editPaths ?? config.writePaths ?? DEFAULT_WRITE_PATHS
+    // Source code by default, unlike delegate_write: a change here comes back as
+    // a reviewable diff, after a backup and a parser run, so the control is the
+    // review rather than the allowlist. NEVER_TOUCH still applies underneath.
+    const allowed = config.editPaths ?? DEFAULT_EDIT_PATHS
 
     let target: { absolute: string; displayPath: string }
     try {
@@ -109,6 +112,22 @@ Do NOT use this for a single edit, where it saves nothing, nor for anything requ
       return `delegate_edit refused: ${target.displayPath} looks like a secret or credential file.`
     }
 
+    if (isForbidden(target.displayPath)) {
+      await logTelemetry({
+        tool: "delegate_edit",
+        event: "refused-forbidden",
+        agent: context.agent,
+        sessionID: context.sessionID,
+        target: target.displayPath,
+      })
+      return (
+        `delegate_edit refused: ${target.displayPath} is off limits to workers regardless of ` +
+        `configuration.\n\nCI definitions, database migrations, lockfiles and the shunt's own ` +
+        `policy share a property: a wrong edit passes diff review and does its damage somewhere ` +
+        `other than the code you were reading. Make this change yourself.`
+      )
+    }
+
     if (!isAllowed(target.displayPath, allowed)) {
       await logTelemetry({
         tool: "delegate_edit",
@@ -119,9 +138,8 @@ Do NOT use this for a single edit, where it saves nothing, nor for anything requ
       })
       return (
         `delegate_edit refused: ${target.displayPath} is not on the edit allowlist.\n\n` +
-        `A worker may only touch files whose correctness a test run can judge, because ` +
-        `nobody reads what it produces. Make this change yourself, or add the pattern to ` +
-        `"editPaths" in .opencode/shunt.json if this file genuinely qualifies.\n\n` +
+        `Make this change yourself, or add the pattern to "editPaths" in .opencode/shunt.json ` +
+        `if a worker should be trusted with it.\n\n` +
         `Currently allowed: ${allowed.join(", ")}`
       )
     }
@@ -251,33 +269,36 @@ Do NOT use this for a single edit, where it saves nothing, nor for anything requ
     }
 
     const backedUp = await backup(target.displayPath, before)
-    try {
-      await fs.writeFile(target.absolute, after, "utf8")
-    } catch (error: any) {
-      return `delegate_edit failed: could not write ${target.displayPath} (${error.message}). It is unchanged.`
-    }
+    const applied = await applyVerified(worktree, target, before, after)
 
-    const syntax = await checkSyntax(worktree, target.absolute)
-
-    // A failed parse is recoverable and the caller must be told plainly, but
-    // leaving broken code on disk is worse than losing the work.
-    if (syntax.status === "failed" && backedUp) {
-      await fs.writeFile(target.absolute, before, "utf8")
+    if (!applied.ok) {
       await logTelemetry({
         tool: "delegate_edit",
-        event: "reverted-syntax-error",
+        event: `refused-${applied.kind}`,
         agent: context.agent,
         sessionID: context.sessionID,
         target: target.displayPath,
         worker_model: active.profile.model,
-        detail: syntax.detail.slice(0, 200),
+        detail: applied.detail.slice(0, 200),
       })
-      return (
-        `delegate_edit failed: the edited file did not parse, so it was reverted.\n\n` +
-        `${syntax.detail}\n\n` +
-        `${target.displayPath} is back to its original contents. The rejected version is at ` +
-        `${backedUp.replace(/__/, "__rejected__")} if you want to look. Make the change yourself.`
-      )
+
+      if (applied.kind === "changed-underneath") {
+        return (
+          `delegate_edit refused: ${target.displayPath} changed on disk while the worker was ` +
+          `answering, so applying this edit would have overwritten that change. Nothing was ` +
+          `written. Re-read the file and ask again if the edit still makes sense.`
+        )
+      }
+      if (applied.kind === "syntax") {
+        return (
+          `delegate_edit failed: the edited version did not parse, so it was never applied.\n\n` +
+          `${applied.detail}\n\n` +
+          `${target.displayPath} is untouched.` +
+          (backedUp ? ` The rejected version is at ${backedUp.replace(/__/, "__rejected__")}.` : "") +
+          ` Make the change yourself.`
+        )
+      }
+      return `delegate_edit failed: could not write ${target.displayPath} (${applied.detail}). It is unchanged.`
     }
 
     // Full diff kept aside so the preview can stay small; that is the whole point.
