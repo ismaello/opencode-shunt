@@ -1,7 +1,9 @@
+English: [REAL_RESULTS.md](REAL_RESULTS.md)
+
 # Montar un proyecto real con el sistema, y lo que salió mal
 
 Aplicación FastAPI de gestión de biblioteca, creada desde cero en
-`/home/ismaello/cofers/data/testcode` usando únicamente el sistema instalado con
+`/path/to/testcode` usando únicamente el sistema instalado con
 `pip install opencode-shunt`.
 
 Todas las cifras salen de la tabla `session` de `opencode.db` y de la telemetría
@@ -331,8 +333,8 @@ sola ejecución y hay que tratarla como tal.
 ## Cómo reproducir estas cifras
 
 ```bash
-cd /home/ismaello/cofers/data/testcode
-shunt costs              # escribe shunt-costes.md con el desglose de la factura
+cd /path/to/testcode
+shunt costs              # escribe shunt-costs.md con el desglose de la factura
 shunt stats              # ahorro por operación, desde la telemetría
 shunt doctor             # comprobar que sigue bien montado
 ```

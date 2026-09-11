@@ -1,3 +1,5 @@
+English summary of the product: [HOW_IT_WORKS.md](HOW_IT_WORKS.md) · [ROADMAP.md](ROADMAP.md)
+
 # Plan de ejecución: qué se construyó y cómo replicarlo
 
 Registro de la implementación real. Sirve para dos cosas: entender por qué el

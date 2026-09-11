@@ -73,7 +73,7 @@ def build_parser() -> argparse.ArgumentParser:
     report.add_argument("--detail", action="store_true", help="one line per session")
 
     costs = add("costs", "Write a readable Markdown bill for this repository.")
-    costs.add_argument("--out", help="file to write (default: shunt-costes.md in the repository)")
+    costs.add_argument("--out", help="file to write (default: shunt-costs.md in the repository)")
     costs.add_argument("--days", type=int, help="only the last N days")
     costs.add_argument("--all-repos", action="store_true", help="every repository, not just this one")
     costs.add_argument("--stdout", action="store_true", help="print instead of writing a file")

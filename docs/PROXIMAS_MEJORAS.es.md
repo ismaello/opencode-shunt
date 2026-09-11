@@ -1,3 +1,5 @@
+English: [ROADMAP.md](ROADMAP.md)
+
 # Próximas mejoras
 
 Ordenadas por lo que aportarían frente a lo que cuestan. Cada una dice qué
@@ -94,7 +96,7 @@ Trae una regla dentro: si el efecto esperado queda por debajo del 146% de
 varianza medida en un A/B de dos brazos, se niega a recomendar el A/B y lo dice
 con esas palabras. Que es exactamente lo que habría hecho falta antes de las
 cuatro iteraciones de la revisión que aparecen en
-[RESULTADOS_PRUEBA_REAL.md](RESULTADOS_PRUEBA_REAL.md).
+[RESULTADOS_PRUEBA_REAL.es.md](RESULTADOS_PRUEBA_REAL.es.md).
 
 ---
 

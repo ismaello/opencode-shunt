@@ -1,3 +1,5 @@
+English: [HOW_IT_WORKS.md](HOW_IT_WORKS.md)
+
 # Cómo funciona el sistema
 
 Guía de uso y funcionamiento. Explica qué hace el sistema, por qué, qué reglas
@@ -319,7 +321,7 @@ delegado trabajo.
 
 ```bash
 shunt doctor     # ¿está bien montado? Ejecútalo cuando algo huela raro
-shunt costs      # escribe shunt-costes.md: qué ha costado este repo y en qué
+shunt costs      # escribe shunt-costs.md: qué ha costado este repo y en qué
 shunt stats      # qué ahorró cada delegación, operación por operación
 shunt config     # cambiar quién orquesta, quién lee y quién escribe
 ```
@@ -397,7 +399,7 @@ y si sólo mirases `input` parecería que no cuesta nada.
 ### Ejecutarlo
 
 ```bash
-./bench.py --repo /home/ismaello/cofers/data/automation-cofers-engine \
+./bench.py --repo /path/to/your-repo \
            --name test-b \
            "Traza el flujo de reconciliación desde la entrada del workflow hasta las sugerencias persistidas."
 ```

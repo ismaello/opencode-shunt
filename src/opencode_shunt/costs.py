@@ -107,8 +107,8 @@ def split_spend(session: dict) -> dict[str, float]:
     prices = providers.prices_for_model(session["model"]) or FALLBACK_PRICES
     per = lambda tokens, price: (tokens / 1_000_000) * (price or 0.0)
     return {
-        "entrada": per(session["input"], prices["price_in"]),
-        "salida": per(session["output"], prices["price_out"]),
+        "input": per(session["input"], prices["price_in"]),
+        "output": per(session["output"], prices["price_out"]),
         "cache write": per(session["cache_write"], prices["cache_write"]),
         "cache read": per(session["cache_read"], prices["cache_read"]),
     }
@@ -168,10 +168,10 @@ def worker_spend(rows: list[dict], profile_model: str | None = None) -> tuple[fl
 def savings(rows: list[dict]) -> list[dict]:
     """What each kind of delegation kept out, in characters."""
     kinds = [
-        ("bulk_read", "lectura delegada", "content_chars", "returned_chars"),
-        ("output shunt", "salida de comandos resumida", "raw_bytes", "summary_bytes"),
-        ("delegate_write", "ficheros generados", "written_chars", "returned_chars"),
-        ("delegate_edit", "ediciones delegadas", "written_chars", "returned_chars"),
+        ("bulk_read", "delegated reads", "content_chars", "returned_chars"),
+        ("output shunt", "summarised command output", "raw_bytes", "summary_bytes"),
+        ("delegate_write", "generated files", "written_chars", "returned_chars"),
+        ("delegate_edit", "delegated edits", "written_chars", "returned_chars"),
     ]
     out = []
     for key, label, before_field, after_field in kinds:
@@ -217,21 +217,21 @@ def render(
     worker_model: str | None = None,
 ) -> str:
     total = sum(s["cost"] for s in sessions)
-    when = datetime.now().strftime("%d/%m/%Y %H:%M")
-    period = f"últimos {days} días" if days else "todo el histórico"
+    when = datetime.now().strftime("%Y-%m-%d %H:%M")
+    period = f"last {days} days" if days else "all history"
 
     lines = [
-        "# Costes",
+        "# Costs",
         "",
-        f"**{scope}** · {period} · generado el {when} por `shunt costs`",
+        f"**{scope}** · {period} · generated {when} by `shunt costs`",
         "",
     ]
 
     if not sessions:
         lines += [
-            "No hay ninguna sesión registrada para este ámbito. Si esperabas verlas,",
-            "comprueba que estás en el repositorio correcto: las sesiones se guardan",
-            "con el directorio donde se lanzaron.",
+            "No sessions recorded for this scope. If you expected some, check that",
+            "you are in the right repository: sessions are stored under the directory",
+            "where they were started.",
             "",
         ]
         return "\n".join(lines)
@@ -239,27 +239,26 @@ def render(
     tokens_out = sum(s["output"] for s in sessions)
     worker_cost, worker_calls, unpriced = worker_spend(telemetry, worker_model)
     lines += [
-        "## Resumen",
+        "## Summary",
         "",
-        f"- **Gasto total: {money(total + worker_cost)}** en {len(sessions)} sesiones",
-        f"  - orquestador: {money(total)}",
-        f"  - workers: {money(worker_cost)} en {worker_calls} llamadas"
+        f"- **Total spend: {money(total + worker_cost)}** across {len(sessions)} sessions",
+        f"  - orchestrator: {money(total)}",
+        f"  - workers: {money(worker_cost)} in {worker_calls} calls"
         + (f" ({100 * worker_cost / (total + worker_cost):.1f}%)" if total + worker_cost else ""),
-        f"- {tokens_out:,} tokens de salida escritos por el modelo caro",
-        f"- Coste medio por sesión: {money((total + worker_cost) / len(sessions))}",
+        f"- {tokens_out:,} output tokens written by the expensive model",
+        f"- Average cost per session: {money((total + worker_cost) / len(sessions))}",
         "",
-        "El gasto del orquestador sale de la contabilidad de OpenCode. El de los",
-        "workers no puede salir de ahí: son llamadas HTTP directas que no crean sesión,",
-        "así que se calcula con los tokens que registra nuestra propia telemetría,",
-        "cada llamada al precio del modelo que la atendió. Todo",
-        "lo que viene después sobre ahorro sí es estimado.",
+        "Orchestrator spend comes from OpenCode's accounting. Worker spend cannot:",
+        "those calls are direct HTTP and create no session, so they are priced from",
+        "tokens in our own telemetry, each call at the model that served it.",
+        "Everything below about savings is an estimate.",
         "",
     ]
     if unpriced:
         lines += [
-            f"> **{unpriced} de {worker_calls} llamadas al worker no se han podido tarifar**",
-            "> porque no conocemos el precio de su modelo, así que quedan fuera del total.",
-            "> El gasto real de workers es algo mayor que el que aparece arriba.",
+            f"> **{unpriced} of {worker_calls} worker calls could not be priced**",
+            "> because we do not know that model's rate, so they sit outside the total.",
+            "> Real worker spend is somewhat higher than the figure above.",
             "",
         ]
 
@@ -269,9 +268,9 @@ def render(
         by_model.setdefault(session["model"], []).append(session)
 
     lines += [
-        "## Por modelo",
+        "## By model",
         "",
-        "| Modelo | Sesiones | Gasto | % | Salida | Cache write | Cache read |",
+        "| Model | Sessions | Spend | % | Output | Cache write | Cache read |",
         "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
     for model, group in sorted(by_model.items(), key=lambda kv: -sum(s["cost"] for s in kv[1])):
@@ -292,25 +291,25 @@ def render(
     estimated = sum(concepts.values())
 
     lines += [
-        "## En qué se va",
+        "## Where it goes",
         "",
-        "| Concepto | Coste | % | Qué lo reduce |",
+        "| Concept | Cost | % | What reduces it |",
         "| --- | ---: | ---: | --- |",
     ]
     what_helps = {
-        "salida": "`delegate_write` y `delegate_edit`",
-        "cache write": "`bulk_read` y el resumen de salidas",
-        "cache read": "sesiones más cortas; nada más lo toca",
-        "entrada": "poco: casi todo entra ya como cache write",
+        "output": "`delegate_write` and `delegate_edit`",
+        "cache write": "`bulk_read` and output summarising",
+        "cache read": "shorter sessions; nothing else touches it",
+        "input": "little: almost everything arrives as a cache write",
     }
     for concept, value in sorted(concepts.items(), key=lambda kv: -kv[1]):
         share = 100 * value / estimated if estimated else 0
         lines.append(f"| {concept} | {money(value)} | {share:.0f}% | {what_helps[concept]} |")
     lines += [
         "",
-        f"Este desglose reparte {money(estimated)} a precio de lista, contra los"
-        f" {money(total)} realmente facturados. Si no cuadran, es que algún modelo"
-        " no está en el catálogo de precios o hubo descuentos.",
+        f"This split allocates {money(estimated)} at list prices against the"
+        f" {money(total)} actually billed. If they disagree, a model is missing from"
+        " the price catalogue or there were discounts.",
         "",
     ]
 
@@ -318,9 +317,9 @@ def render(
     avoided = savings(telemetry)
     if avoided:
         lines += [
-            "## Lo que no llegó al modelo caro",
+            "## What never reached the expensive model",
             "",
-            "| Operación | Veces | Habría entrado | Entró | Ahorro |",
+            "| Operation | Count | Would have entered | Entered | Saved |",
             "| --- | ---: | ---: | ---: | ---: |",
         ]
         for row in avoided:
@@ -339,14 +338,13 @@ def render(
         value_out = (chars_out / 2.9 / 1e6) * (prices["price_out"] or 0)
         lines += [
             "",
-            f"A los precios del orquestador, eso vale del orden de"
+            f"At the orchestrator's prices, that is on the order of"
             f" **{money(value_in + value_out)}**"
-            f" ({money(value_in)} de entrada, {money(value_out)} de salida).",
+            f" ({money(value_in)} input, {money(value_out)} output).",
             "",
-            "Es un techo, no una factura evitada. Sin el sistema el modelo no habría",
-            "leído necesariamente todo lo que se le ahorró: puede que hubiera hecho un",
-            "grep, o leído solo una parte. Sirve para ver la tendencia, no para",
-            "presumir de una cifra.",
+            "That is a ceiling, not an avoided invoice. Without the system the model",
+            "would not necessarily have read everything that was kept out: it might",
+            "have grepped, or read only part. Use it for trend, not for a boast.",
             "",
         ]
 
@@ -354,13 +352,13 @@ def render(
     dearest = sorted(sessions, key=lambda s: -s["cost"])[:10]
     if len(sessions) > 1:
         lines += [
-            "## Las sesiones más caras",
+            "## Most expensive sessions",
             "",
-            "| Fecha | Coste | Salida | Modelo | Título |",
+            "| When | Cost | Output | Model | Title |",
             "| --- | ---: | ---: | --- | --- |",
         ]
         for session in dearest:
-            stamp = datetime.fromtimestamp(session["created"] / 1000).strftime("%d/%m %H:%M")
+            stamp = datetime.fromtimestamp(session["created"] / 1000).strftime("%m-%d %H:%M")
             title = session["title"].replace("|", "/")[:60]
             lines.append(
                 f"| {stamp} | {money(session['cost'])} | {session['output']:,} |"
@@ -371,14 +369,14 @@ def render(
     failures = [r for r in telemetry if r.get("event") in ("worker-failed", "output-shunt-failed")]
     if failures:
         lines += [
-            "## Delegaciones que fallaron",
+            "## Failed delegations",
             "",
-            f"{len(failures)} llamada(s) al worker no salieron, y cuando eso pasa el trabajo",
-            "vuelve al modelo caro sin avisar. Merece la pena mirarlo:",
+            f"{len(failures)} worker call(s) did not complete, and when that happens the",
+            "work silently returns to the expensive model. Worth a look:",
             "",
-            f"- Último error: `{str(failures[-1].get('error', ''))[:160]}`",
+            f"- Last error: `{str(failures[-1].get('error', ''))[:160]}`",
             "",
-            "Ejecuta `shunt doctor` para ver si es de configuración.",
+            "Run `shunt doctor` to see if it is a configuration issue.",
             "",
         ]
 
@@ -388,7 +386,7 @@ def render(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("repo", nargs="?", default=".")
-    parser.add_argument("--out", help="file to write (default: shunt-costes.md in the repository)")
+    parser.add_argument("--out", help="file to write (default: shunt-costs.md in the repository)")
     parser.add_argument("--days", type=int, help="only the last N days")
     parser.add_argument("--all-repos", action="store_true", help="every repository, not just this one")
     parser.add_argument("--stdout", action="store_true", help="print instead of writing a file")
@@ -399,7 +397,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.days:
         cutoff = (datetime.now(timezone.utc) - timedelta(days=args.days)).timestamp() * 1000
 
-    scope = "todos los repositorios" if args.all_repos else f"`{repo}`"
+    scope = "all repositories" if args.all_repos else f"`{repo}`"
     sessions = load_sessions(None if args.all_repos else repo, cutoff)
     telemetry = load_telemetry(cutoff)
     if not args.all_repos:
@@ -421,17 +419,17 @@ def main(argv: list[str] | None = None) -> int:
         print(document)
         return 0
 
-    destination = pathlib.Path(args.out) if args.out else repo / "shunt-costes.md"
+    destination = pathlib.Path(args.out) if args.out else repo / "shunt-costs.md"
     destination.write_text(document + "\n", encoding="utf8")
     total = sum(s["cost"] for s in sessions)
-    print(f"{destination}: {len(sessions)} sesiones, {money(total)}")
+    print(f"{destination}: {len(sessions)} sessions, {money(total)}")
     if not sessions and not args.all_repos:
-        print("Ninguna sesión en este repositorio. Prueba con --all-repos.")
+        print("No sessions in this repository. Try --all-repos.")
     elif not args.out:
         # It lands in the repository root because the point is to share it, but
         # session titles are summaries of what you asked for, which is not
         # always something to commit.
-        print("Contiene los títulos de las sesiones. Míralo antes de comitearlo.")
+        print("Contains session titles. Review before committing.")
     return 0
 
 

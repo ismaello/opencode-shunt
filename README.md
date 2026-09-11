@@ -81,7 +81,7 @@ afterwards, came out **92% cheaper and four times faster** on Gemini.
 multi-tenant service, one prompt, one pass each: Opus found 3 of 3, GPT-6 Astra
 found 3 of 3, Gemini 3.1 Pro found 2 of 3. That is the split the whole system
 is built around, and [the detail is
-here](docs/RESULTADOS_PRUEBA_REAL.md#6-opus-contra-gemini-31-pro-contra-astra-6-en-una-tarea-de-criterio).
+here](docs/REAL_RESULTS.md#6-opus-vs-gemini-31-pro-vs-astra-on-a-judgement-task).
 
 **The floor moves with the orchestrator, and that is the point.** Delegating
 exists to protect an expensive context, so a cheaper boss means less worth
@@ -205,7 +205,7 @@ for, and why it checks the role assignment rather than just the files.
 ## Measuring it
 
 ```
-shunt costs      # write shunt-costes.md: what this repository has cost, and where it went
+shunt costs      # write shunt-costs.md: what this repository has cost, and where it went
 shunt stats      # what each delegation saved, from the shunt's own telemetry
 shunt report     # what it saved across real sessions, against opencode's accounting
 shunt replay     # re-judge your recorded reads against a different threshold. Free
@@ -247,7 +247,7 @@ looked obviously right and would have cost a few dollars to test; the replay
 showed it would have touched 5 of 81 reads and been worth 8.6% of three
 sessions, against a *measured* 84% penalty the last time this guard was
 hardened. The change was dropped, and [the reasoning is
-recorded](docs/PROXIMAS_MEJORAS.md) because it will look like a good idea again.
+recorded](docs/ROADMAP.md) because it will look like a good idea again.
 
 ## Honest limits
 
@@ -291,7 +291,7 @@ environment variable holding a key, never its value.
 
 ```
 pip install -e ".[dev]"
-pytest                  # 39 checks: Python and the TypeScript runtime
+pytest                  # 120 checks: Python and the TypeScript runtime
 ```
 
 The runtime's pure functions have their own deterministic suites, run through
@@ -301,14 +301,25 @@ worker deleting code it was asked to edit.
 
 ## Documentation
 
+Primary docs are in English. Spanish originals are kept as `*.es.md`.
+
 - [**Tutorial**](TUTORIAL.md) — start here if you have not seen this before. Six
-  worked flows showing what actually happens to a request, in Spanish
-- [How it works](docs/COMO_FUNCIONA.md) — the whole system, in plain terms
-- [Results from a real build](docs/RESULTADOS_PRUEBA_REAL.md) — a FastAPI app built with it, what it cost, and the four defects that only showed up under real use
-- [How it was built](docs/PLAN_EJECUCION.md) — the playbook, to repeat on another project
-- [What is next](docs/PROXIMAS_MEJORAS.md) — what is missing and what it would take
-- [Distribution](docs/DISTRIBUCION.md) — publishing to PyPI and npm, and what was
-  verified before calling it ready
+  worked flows showing what actually happens to a request
+  ([español](TUTORIAL.es.md))
+- [How it works](docs/HOW_IT_WORKS.md) — the whole system, in plain terms
+  ([español](docs/COMO_FUNCIONA.es.md))
+- [Results from a real build](docs/REAL_RESULTS.md) — a FastAPI app built with
+  it, what it cost, and the silent defects that only showed up under real use
+  ([español](docs/RESULTADOS_PRUEBA_REAL.es.md))
+- [Roadmap](docs/ROADMAP.md) — what is missing, and what was discarded after
+  measuring ([español](docs/PROXIMAS_MEJORAS.es.md))
+- [Distribution](docs/DISTRIBUTION.md) — publishing to PyPI and npm, and what
+  was verified before calling it ready
+  ([español](docs/DISTRIBUCION.es.md))
+- [Work plan](docs/PLAN.es.md) — post-review execution plan (Spanish; English
+  summary lives in the roadmap)
+- [How it was built](docs/PLAN_EJECUCION.md) — playbook from the original build
+  (Spanish)
 
 ## Credit
 

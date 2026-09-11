@@ -1,9 +1,11 @@
+English summary: [ROADMAP.md](ROADMAP.md)
+
 # Plan de trabajo
 
-Revisión externa recibida el 11/09/2026 (`plan_astra.md`), verificada hallazgo
-por hallazgo y reordenada por coste y beneficio. La revisión original es un
-buen documento: de los nueve hallazgos concretos que comprobé, ocho eran
-reales. Este documento no la resume, la convierte en trabajo.
+Revisión externa recibida el 11/09/2026, verificada hallazgo por hallazgo y
+reordenada por coste y beneficio. De los nueve hallazgos concretos que se
+comprobaron, ocho eran reales. Este documento no resume esa revisión: la
+convierte en trabajo.
 
 Dos diferencias con el orden que proponía:
 

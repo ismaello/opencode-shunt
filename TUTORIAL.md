@@ -1,88 +1,87 @@
-# Tutorial: qué es esto y cómo se usa
+# Tutorial: what this is and how to use it
 
-Escrito para alguien que no ha visto el proyecto nunca. No hace falta entender
-nada de modelos de lenguaje para seguirlo.
+> Spanish: [TUTORIAL.es.md](TUTORIAL.es.md)
 
----
-
-## 1. El problema, en una frase
-
-Cuando le pides algo a un modelo potente (Claude, GPT, Gemini Pro), **pagas por
-cada letra que entra y por cada letra que sale**. Y muchas de esas letras no
-necesitaban un modelo potente.
-
-Una comparación: imagina que contratas a un arquitecto a 200 €/hora. Le pides
-una reforma. El arquitecto es imprescindible para decidir dónde va el tabique.
-Pero si además le pones a **leer en voz alta las 400 páginas de la normativa**,
-le estás pagando 200 €/hora por hacer de lector. Eso es lo que pasa cuando un
-modelo caro lee tu repositorio entero para responder "¿dónde se valida el
-usuario?".
-
-**Este proyecto pone un becario al lado del arquitecto.** El becario cuesta 50
-veces menos. El becario lee las 400 páginas y dice: "página 212, párrafo 3, y
-contradice la 87". El arquitecto solo recibe esa frase y sigue decidiendo.
-
-Eso es todo. El resto del documento es cómo se monta y qué se ve cuando
-funciona.
+Written for someone who has never seen the project. You do not need to understand
+language models to follow it.
 
 ---
 
-## 2. Las tres piezas
+## 1. The problem, in one sentence
 
-| Pieza | Quién es | Qué hace | Cuánto cuesta |
+When you ask a strong model (Claude, GPT, Gemini Pro) for something, **you pay
+for every character that goes in and every character that comes out**. And a
+lot of those characters never needed a strong model.
+
+An analogy: you hire an architect at €200/hour for a renovation. The architect
+is essential for where the wall goes. But if you also make them **read 400 pages
+of building code out loud**, you are paying €200/hour for a reader. That is what
+happens when an expensive model reads your whole repository to answer “where is
+the user validated?”.
+
+**This project puts an intern next to the architect.** The intern costs ~50×
+less. The intern reads the 400 pages and says: “page 212, paragraph 3, and it
+contradicts page 87”. The architect only gets that sentence and keeps deciding.
+
+That is the whole idea. The rest of this document is how you set it up and what
+it looks like when it works.
+
+---
+
+## 2. The three pieces
+
+| Piece | Who | What they do | What they cost |
 |---|---|---|---|
-| **Orquestador** | Tu modelo caro | Piensa, decide, revisa, escribe el código importante | Caro. Es lo único que merece la pena pagar |
-| **Worker** | Un modelo barato o local | Lee mucho y resume, aplica cambios repetitivos | Casi gratis. Medido: **~2% de la factura** |
-| **Tú** | Tú | Le pides cosas en lenguaje normal | — |
+| **Orchestrator** | Your expensive model | Thinks, decides, reviews, writes the important code | Expensive. The only place worth paying frontier rates |
+| **Worker** | A cheap or local model | Reads a lot and summarises, applies repetitive edits | Nearly free. Measured: **~2% of the bill** |
+| **You** | You | Ask for things in plain language | — |
 
-Tú hablas **solo con el orquestador**. El worker no se ve nunca: el orquestador
-lo llama por su cuenta cuando toca. No tienes que acordarte de nada.
+You talk **only to the orchestrator**. You never see the worker: the
+orchestrator calls it when it should. You do not have to remember anything.
 
-Los tres roles los rellenas tú al configurar. Ejemplos que funcionan:
+You fill the three roles when you configure. Setups that work:
 
-- Claude Opus de orquestador + Gemini Flash de worker (lo que uso yo)
-- Gemini 3.1 Pro de orquestador + Gemini Flash Lite de worker (más barato)
-- GPT-6 Astra de orquestador + Qwen en tu propia GPU de worker (el worker sale gratis)
-- DeepSeek haciendo los dos papeles
+- Claude Opus as orchestrator + Gemini Flash as worker
+- Gemini 3.1 Pro as orchestrator + Gemini Flash Lite as worker (cheaper)
+- GPT-6 Astra as orchestrator + Qwen on your own GPU as worker (worker is free)
+- DeepSeek doing both roles
 
 ---
 
-## 3. Qué necesitas antes de empezar
+## 3. What you need before you start
 
-1. **OpenCode instalado.** Es el programa donde escribes tus peticiones.
+1. **OpenCode installed.** That is where you type requests.
    → https://opencode.ai
-2. **Credenciales de un modelo caro** para el orquestador. Una de estas:
-   - Claude: `ANTHROPIC_API_KEY` o `opencode auth login`
+2. **Credentials for an expensive model** for the orchestrator. One of:
+   - Claude: `ANTHROPIC_API_KEY` or `opencode auth login`
    - Gemini: `gcloud auth application-default login` + `GOOGLE_CLOUD_PROJECT`
    - OpenAI: `OPENAI_API_KEY`
-3. **Un worker.** O credenciales de un modelo barato en la nube, o
-   [Ollama](https://ollama.com) corriendo en tu máquina (gratis, pero necesita
-   GPU para ir rápido).
-4. **Python 3.10 o superior**, solo para instalar. El sistema en sí es
-   TypeScript.
+3. **A worker.** Either credentials for a cheap cloud model, or
+   [Ollama](https://ollama.com) on your machine (free, but needs a GPU to be fast).
+4. **Python 3.10+**, only to install. The runtime itself is TypeScript.
 
 ---
 
-## 4. Instalación: cuatro comandos
+## 4. Install: four commands
 
 ```bash
-pipx install opencode-shunt     # o: uv tool install opencode-shunt
+pipx install opencode-shunt     # or: uv tool install … / npx opencode-shunt …
 
-cd tu-proyecto
-shunt init                      # copia el sistema a ./.opencode
-shunt config                    # te pregunta quién hace cada papel
-shunt doctor                    # comprueba que funciona de verdad
+cd your-project
+shunt init                      # copy the system into ./.opencode
+shunt config                    # ask who does each role
+shunt doctor                    # check that it actually works
 ```
 
-Y a partir de ahí trabajas como siempre:
+From then on you work as usual:
 
 ```bash
 opencode --agent orchestrator
 ```
 
-### Qué te pregunta `shunt config`
+### What `shunt config` asks
 
-Tres preguntas, y nada más:
+Three questions, and nothing else:
 
 ```
 Measured from 126 of your own sessions: conversations run about 17k tokens,
@@ -109,45 +108,45 @@ choice [1]:
 Who writes? ...
 ```
 
-Los modelos y los precios de esa lista **no están escritos en nuestro código**:
-salen de la tabla que mantiene OpenCode. Un catálogo a mano se queda viejo
-siempre, y aquí un precio viejo no es un detalle cosmético — el punto a partir
-del cual delegar sale rentable se calcula con esos números.
+The models and prices in that list **are not hard-coded in our catalogue**: they
+come from the table OpenCode maintains. A hand-maintained list always goes stale,
+and here a stale price is not cosmetic — the point at which delegating pays is
+computed from those numbers.
 
-**Todo lo demás lo mide en vez de preguntártelo.** Lee la base de datos de
-OpenCode para averiguar cuánto duran tus conversaciones, mira tu repositorio
-para saber en qué lenguaje está y dónde tienes los tests, y calcula con eso a
-partir de qué tamaño delegar sale rentable. Son cosas que nadie sabe de sí
-mismo, así que preguntarlas daría peores respuestas que medirlas.
+**Everything else it measures instead of asking.** It reads OpenCode’s database
+for how long your conversations run, looks at your repository for language and
+test layout, and from that computes the size at which delegating pays. Nobody
+knows those facts about themselves, so asking would give worse answers than
+measuring.
 
 ---
 
-## 5. Qué ficheros aparecen en tu proyecto
+## 5. What files land in your project
 
-Después de `shunt init` y `shunt config`:
+After `shunt init` and `shunt config`:
 
 ```
-tu-proyecto/
+your-project/
 ├── .opencode/
 │   ├── agents/
-│   │   └── orchestrator.md        ← las instrucciones del jefe
+│   │   └── orchestrator.md        ← instructions for the boss
 │   ├── plugins/
-│   │   └── shunt.ts               ← el guardia: intercepta lecturas caras
+│   │   └── shunt.ts               ← the guard: intercepts expensive reads
 │   ├── tools/
-│   │   ├── bulk-read.ts           ← herramienta: "leer mucho y resumir"
-│   │   ├── delegate-edit.ts       ← herramienta: "cambio repetitivo"
-│   │   └── delegate-write.ts      ← herramienta: "escribe este fichero"
+│   │   ├── bulk-read.ts           ← tool: “read a lot and summarise”
+│   │   ├── delegate-edit.ts       ← tool: “repetitive change”
+│   │   └── delegate-write.ts      ← tool: “write this file”
 │   ├── lib/
-│   │   └── economics.ts           ← la aritmética de cuándo delegar sale a cuenta
-│   ├── shunt.json                 ← política del proyecto → SÍ se commitea
-│   └── shunt.local.json           ← tu máquina → NO se commitea (se ignora solo)
-└── opencode.json                  ← config de OpenCode (se le añade un bloque)
+│   │   └── economics.ts           ← arithmetic for when delegating pays
+│   ├── shunt.json                 ← project policy → DO commit this
+│   └── shunt.local.json           ← this machine → do NOT commit (gitignored)
+└── opencode.json                  ← OpenCode config (a block is merged in)
 ```
 
-Los dos ficheros que te importan son los últimos:
+The two files that matter:
 
-**`shunt.json`** — decisiones sobre *el proyecto*. Van al repositorio para que
-tu compañero tenga las mismas reglas:
+**`shunt.json`** — decisions about *the project*. Commit it so a teammate gets
+the same rules:
 
 ```json
 {
@@ -162,89 +161,76 @@ tu compañero tenga las mismas reglas:
     "assumedConversationTokens": 18000,
     "remainingTurns": 2,
     "cacheWritePerMillion": 6.25,
-    "cacheReadPerMillion": 0.5
+    "cacheReadPerMillion": 0.5,
+    "workerInPerMillion": 0.3,
+    "workerOutPerMillion": 2.5
   }
 }
 ```
 
-- `writePaths`: dónde puede el worker **crear ficheros desde cero**. Corto a
-  propósito: un fichero que nadie lee solo es seguro donde un test puede
-  juzgarlo.
-- `editPaths`: dónde puede **modificar** ficheros. Más amplio, porque un cambio
-  vuelve como un diff que puedes revisar.
-- `economics`: los números con los que se calcula si delegar sale a cuenta.
-  Los pone `shunt config` midiendo; no los toques a mano.
+- `writePaths`: where the worker may **create files from scratch**. Short on
+  purpose: a file nobody reviews is only safe where a test run can judge it.
+- `editPaths`: where it may **modify** files. Wider, because a change comes back
+  as a reviewable diff.
+- `economics`: the numbers that decide whether delegating pays. `shunt config`
+  sets them by measurement; do not hand-edit them lightly.
 
-**`shunt.local.json`** — tu máquina. Se ignora en git automáticamente, porque
-commitearlo o filtra algo o le rompe la configuración al siguiente que clone:
+**`shunt.local.json`** — your machine. Gitignored automatically, because
+committing it either leaks something or breaks the next person to clone.
 
-```json
-{
-  "profile": "google-vertex-reader",
-  "profiles": {
-    "google-vertex-reader": {
-      "kind": "vertex",
-      "model": "gemini-2.5-flash",
-      "project": "tu-proyecto-gcp",
-      "location": "global"
-    }
-  }
-}
-```
-
-**Las claves de API no se escriben nunca en ninguno de los dos.** Se guarda el
-*nombre* de la variable de entorno donde está la clave, jamás su valor.
+**API keys are never written to either file.** Profiles store the *name* of the
+environment variable that holds the key, never its value.
 
 ---
 
-## 6. Flujos de ejemplo
+## 6. Example flows
 
-Aquí está lo que pasa de verdad. Seis casos, del más común al más raro.
+What actually happens. Six cases, from most common to rarest.
 
-### Flujo A — Preguntas algo sobre código que ocupa mucho
+### Flow A — You ask about code that is large
 
-**Tú escribes:**
-
-```
-¿Cómo se valida que un cliente no vea los datos de otro?
-```
-
-**Qué pasa por dentro:**
+**You write:**
 
 ```
-1. El orquestador no sabe qué ficheros mirar. Llama a @explorer (worker barato),
-   que le devuelve una lista: services/runs.py, auth/tenant.py, api/router.py
+How do we make sure one customer cannot see another’s data?
+```
 
-2. El orquestador llama a:
+**Inside:**
+
+```
+1. The orchestrator does not know which files matter. It calls @explorer
+   (cheap worker), which returns: services/runs.py, auth/tenant.py, api/router.py
+
+2. The orchestrator calls:
       bulk_read(
-        question = "¿Cómo se valida el aislamiento entre clientes?",
+        question = "How is tenant isolation enforced?",
         paths    = ["src/services/runs.py", "src/auth/tenant.py", "src/api/router.py"]
       )
 
-3. La herramienta lee los 3 ficheros del disco: 1.240 líneas, 48 KB.
-   Les añade números de línea y se los manda al worker.
-   >>> Estas 48 KB NUNCA llegan al modelo caro. <<<
+3. The tool reads the 3 files from disk: 1,240 lines, 48 KB.
+   It adds line numbers and sends them to the worker.
+   >>> These 48 KB NEVER enter the expensive model. <<<
 
-4. El worker responde con un formato rígido.
+4. The worker answers in a rigid format.
 
-5. El orquestador recibe solo esto (5,8 KB):
+5. The orchestrator receives only this (~5.8 KB):
 ```
 
 ```
 COVERAGE:
-- src/services/runs.py: analysed - arranca y consulta ejecuciones, es donde se comprueba el tenant
-- src/auth/tenant.py: analysed - extrae el tenant del token
-- src/api/router.py: not relevant - solo enruta, no valida nada
+- src/services/runs.py: analysed - starts and queries runs; tenant check lives here
+- src/auth/tenant.py: analysed - extracts tenant from the token
+- src/api/router.py: not relevant - routing only, no validation
 
-HALLAZGOS
+FINDINGS
 
 src/services/runs.py:112-118  _authorized_handle()
-  Compara el tenant del token con el del workflow antes de devolver el handle.
-  Es el único sitio donde se hace esa comprobación.
+  Compares the token’s tenant with the workflow’s before returning the handle.
+  That is the only place this check happens.
 
 src/services/runs.py:203  signal_run()
-  AVISO: llama a client.get_workflow_handle() directamente, sin pasar por
-  _authorized_handle(). Se salta la comprobación de tenant.
+  WARNING: calls client.get_workflow_handle() directly, skipping
+  _authorized_handle(). Bypasses the tenant check.
 
 ---
 bulk_read: 1240 lines / 48 KB analysed by gemini-2.5-flash in 6.2s.
@@ -252,25 +238,24 @@ These lines did not enter your context.
 paths: 3 correct
 ```
 
-**Lo que ganas:** el modelo caro ha visto 5,8 KB en vez de 48 KB. **88% menos**
-(mediana medida sobre llamadas reales). Y con los números de línea puede ir a
-mirar exactamente `runs.py:203` si quiere, gastando 15 líneas y no 1.240.
+**What you gain:** the expensive model saw 5.8 KB instead of 48 KB. **~88% less**
+(median measured on real calls). With line numbers it can still open exactly
+`runs.py:203` if it wants, spending 15 lines instead of 1,240.
 
 ---
 
-### Flujo B — El fichero es pequeño
+### Flow B — The file is small
 
-**Tú escribes:**
+**You write:**
 
 ```
-Lee src/config.py y dime qué variables de entorno usa
+Read src/config.py and tell me which environment variables it uses
 ```
 
-**Qué pasa:** nada especial. `config.py` son 80 líneas / 2 KB. El sistema **lo
-deja pasar directo** al modelo caro.
+**What happens:** nothing special. `config.py` is 80 lines / 2 KB. The system
+**lets it through** to the expensive model.
 
-Y si el orquestador intenta delegarlo por su cuenta, la herramienta se niega y
-le explica por qué:
+If the orchestrator tries to delegate it anyway, the tool declines and explains:
 
 ```
 bulk_read declined: these files total 80 lines / 2.1 KB, below the 12.6 KB at
@@ -278,23 +263,23 @@ which delegating starts to pay for itself. Read them directly.
 Delegating this would cost about $0.011 more than reading it.
 ```
 
-**Por qué importa:** delegar cuesta un viaje de ida y vuelta. Por debajo de
-cierto tamaño, ese viaje cuesta más que lo que ahorras. El umbral no está
-inventado: sale de los precios reales de tu proveedor y de lo que duran tus
-conversaciones. Un sistema que delega *todo* sale más caro que no tener sistema.
+**Why it matters:** delegating costs a round trip. Below a size, that costs more
+than it saves. The threshold is not invented: it comes from your provider’s
+prices and how long your conversations run. A system that delegates *everything*
+costs more than having no system.
 
 ---
 
-### Flujo C — El orquestador intenta leer algo grande y se le impide
+### Flow C — The orchestrator tries to read something large and is blocked
 
-**Tú escribes:**
+**You write:**
 
 ```
-Revisa src/engine/pipeline.py y dime si hay problemas
+Review src/engine/pipeline.py and tell me if there are problems
 ```
 
-`pipeline.py` son 2.100 líneas / 80 KB. El orquestador va a leerlo entero.
-**El guardia lo corta antes de que salga la petición:**
+`pipeline.py` is 2,100 lines / 80 KB. The orchestrator goes to read it whole.
+**The guard cuts it before the request goes out:**
 
 ```
 SHUNT: read of src/engine/pipeline.py blocked (2100 lines / 80 KB).
@@ -304,173 +289,148 @@ This would burn frontier context on bulk reading. Instead:
   - read with offset/limit if you already know the exact lines you need.
 ```
 
-El orquestador lee el mensaje, entiende la alternativa y llama a `bulk_read`.
-**Tú no ves nada de esto**: ves la respuesta, y te ha costado la décima parte.
+The orchestrator reads the message, takes the alternative, and calls `bulk_read`.
+**You see none of this**: you see the answer, at roughly a tenth of the cost.
 
-**Por qué es un bloqueo y no un consejo:** un consejo que el modelo tiene que
-acordarse de seguir es un consejo que a veces no sigue. Y cuando no lo sigue,
-no hay ningún aviso: te llega una respuesta perfectamente buena con la factura
-completa.
+**Why a block and not advice:** advice the model has to remember to follow is
+advice it sometimes will not. And when it does not, there is no warning: you get
+a perfectly good answer with the full bill.
 
 ---
 
-### Flujo D — Un cambio repetitivo en muchos sitios
+### Flow D — A repetitive change in many places
 
-**Tú escribes:**
-
-```
-Añade docstrings a todas las funciones de src/services/runs.py
-```
-
-Son 21 funciones. Lo caro aquí **no es leer, es escribir**: el modelo caro
-tendría que emitir 21 docstrings *más el código de alrededor dos veces* (el
-texto a buscar y el texto con el que reemplazarlo).
-
-**Qué pasa:**
+**You write:**
 
 ```
-1. El orquestador llama a:
+Add docstrings to every function in src/services/runs.py
+```
+
+That is 21 functions. The expensive part here is **not reading, it is writing**:
+the expensive model would have to emit 21 docstrings *plus the surrounding code
+twice* (search text and replace text).
+
+**What happens:**
+
+```
+1. The orchestrator calls:
       delegate_edit(
         path        = "src/services/runs.py",
-        instruction = "Añade un docstring de una línea a cada función pública.
-                       Estilo imperativo. No cambies ninguna otra cosa."
+        instruction = "Add a one-line docstring to each public function.
+                       Imperative style. Change nothing else."
       )
 
-2. Se comprueba que src/services/runs.py está en editPaths.  ✓
-3. Se hace copia de seguridad del fichero.
-4. El worker devuelve el fichero completo, ya modificado.
-5. >>> El diff se calcula AQUÍ, no lo reporta el worker. <<<
-6. Comprobaciones automáticas:
-      - ¿el fichero sigue siendo Python válido?            ✓
-      - ¿ha metido claves o secretos?                      ✓
-      - ¿ha borrado código con la excusa de editarlo?       ✓
-      - ¿el diff toca medio fichero (reescritura disfrazada)? ✓
-7. Se escribe. El orquestador recibe un resumen del diff (30 líneas).
+2. Check that src/services/runs.py is in editPaths.  ✓
+3. Backup the file.
+4. The worker returns the whole modified file.
+5. >>> The diff is computed HERE, not reported by the worker. <<<
+6. Automatic checks:
+      - still valid Python?                         ✓
+      - secrets inserted?                           ✓
+      - code deleted under the guise of editing?    ✓
+      - diff touching half the file (disguised rewrite)? ✓
+7. Write. The orchestrator gets a short diff preview (~30 lines).
 ```
 
-```
-delegate_edit: src/services/runs.py, +21 -0 lines across 21 sites.
-Verified: parses as Python, no secrets, no deletions.
-Backup at ~/.local/share/opencode-shunt/backups/runs.py.1757577600
+**What you gain: ~78% fewer output tokens** (measured on this exact case: 21
+docstrings in a 308-line file, tests passing, file identical to the original
+apart from the docstrings).
 
-@@ -45,6 +45,7 @@
- def start_run(tenant_id: str, definition_id: str) -> Run:
-+    """Arranca una ejecución nueva para el cliente indicado."""
-     definition = load_definition(definition_id)
-... 28 more lines
-```
-
-**Lo que ganas: 78% menos tokens de salida** (medido sobre este caso exacto:
-21 docstrings en un fichero de 308 líneas, tests pasando, y el fichero idéntico
-al original salvo los docstrings).
-
-**El punto clave:** el diff lo calculamos nosotros comparando antes y después.
-Si el worker dice "solo he añadido docstrings" pero ha reescrito la mitad del
-fichero, el diff lo delata y el cambio se rechaza. No hay que confiar en el
-worker.
+**The key point:** we compute the diff by comparing before and after. If the
+worker says “I only added docstrings” but rewrote half the file, the diff shows
+it and the change is refused. You do not have to trust the worker.
 
 ---
 
-### Flujo E — Crear un fichero nuevo
+### Flow E — Create a new file
 
-**Tú escribes:**
-
-```
-Escribe tests para la función start_run
-```
+**You write:**
 
 ```
-1. El orquestador llama a:
+Write tests for the start_run function
+```
+
+```
+1. The orchestrator calls:
       delegate_write(
         path            = "tests/test_runs.py",
-        instruction     = "Tests para start_run: caso normal, tenant equivocado,
-                           inputs inválidos. Usa pytest y los fixtures de conftest.",
+        instruction     = "Tests for start_run: happy path, wrong tenant,
+                           invalid inputs. Use pytest and conftest fixtures.",
         reference_paths = ["src/services/runs.py", "tests/conftest.py"]
       )
 
-2. ¿tests/test_runs.py está en writePaths?   ✓
-3. ¿existe ya el fichero? No. (Si existiera, copia de seguridad primero.)
-4. El worker lo escribe. Comprobaciones de sintaxis y secretos.
-5. El orquestador recibe: la ruta, el número de líneas, los nombres de los tests.
-   NO recibe el cuerpo del fichero.
+2. Is tests/test_runs.py in writePaths?   ✓
+3. Does the file already exist? No. (If it did, backup first.)
+4. Worker writes it. Syntax and secret checks.
+5. Orchestrator receives: path, line count, test names.
+   NOT the body of the file.
 ```
 
-**Lo que ganas: 76% menos tokens de salida.**
+**What you gain: ~76% fewer output tokens.**
 
-**Aviso importante:** `delegate_write` solo puede escribir en `writePaths`, que
-por defecto es únicamente tests y andamiaje. La razón es honesta: **un test
-generado que pasa puede estar comprobando lo que no debe.** Un fichero que nadie
-lee solo es seguro donde ejecutar los tests puede juzgarlo. Para código de
-verdad se usa `delegate_edit`, porque eso vuelve como un diff revisable.
+**Important:** `delegate_write` may only write under `writePaths`, which by
+default is tests and scaffolding. The reason is honest: **a generated test that
+passes can still be asserting the wrong thing.** A file nobody reviews is only
+safe where running the suite can judge it. For real source code use
+`delegate_edit`, because that returns a reviewable diff.
 
-Y por debajo de todo hay una lista que **nadie puede ampliar**: ficheros de CI,
-migraciones de base de datos, lockfiles y `.opencode/` no los toca ningún worker
-aunque tú configures que sí.
+Underneath both sits a list **nobody can widen**: CI files, database migrations,
+lockfiles and `.opencode/` are never touched by a worker even if you configure
+otherwise.
 
 ---
 
-### Flujo F — Los tests fallan y el error es enorme
+### Flow F — Tests fail and the output is huge
 
-**Tú escribes:**
+**You write:**
 
 ```
-Ejecuta los tests y arregla lo que falle
+Run the tests and fix whatever fails
 ```
 
-El orquestador lanza `pytest`. Salen **1.800 líneas** de salida: 3 fallos y
-1.700 líneas de ruido, trazas repetidas y avisos de deprecación.
+The orchestrator runs `pytest`. Out come **1,800 lines**: 3 failures and 1,700
+lines of noise, repeated traces and deprecation warnings.
 
-**Qué pasa:** antes de que esa salida llegue al modelo caro se resume. Pero con
-una regla: **la parte crítica se extrae mecánicamente y se conserva letra por
-letra.** El mensaje de error y la traza no se "resumen" nunca, porque un error
-parafraseado es un error inútil.
+**What happens:** before that output reaches the expensive model it is summarised.
+With one rule: **the critical part is extracted mechanically and kept character
+for character.** The error message and stack trace are never “paraphrased”,
+because a paraphrased error is a useless error.
 
-El orquestador recibe unas 140 líneas: los 3 fallos completos y exactos, más
-un recuento del resto.
+The orchestrator gets about 140 lines: the 3 failures complete and exact, plus a
+count of the rest.
 
-**Lo que ganas: 92% menos** (mediana medida).
+**What you gain: ~92% less** (median measured).
 
 ---
 
-## 7. Cómo sabes que está funcionando
+## 7. How you know it is working
 
-Esta es la parte que más importa, y ahora explico por qué.
+This is the part that matters most.
 
 ```bash
-shunt doctor     # ¿está bien montado? Contesta sí o no, y qué arreglar
-shunt costs      # escribe shunt-costes.md: qué ha costado este repo y en qué
-shunt stats      # qué ha ahorrado cada operación
-shunt report     # ahorro estimado sobre sesiones reales
-shunt replay     # ¿y si cambio un umbral? Gratis, sin gastar nada
+shunt doctor     # is it set up correctly? Yes/no, and what to fix
+shunt costs      # write a human bill: what this repo has cost, and where
+shunt stats      # what each operation saved
+shunt report     # estimated savings across real sessions
+shunt replay     # what if I change a threshold? Free, no API spend
 ```
 
-### Por qué `shunt doctor` no es un adorno
+### Why `shunt doctor` is not decoration
 
-**Todas las formas en que este sistema se rompe son silenciosas, y todas caen
-del lado caro.** Estas tres están comprobadas, no son hipótesis:
+**Every way this system breaks is silent, and every way falls on the expensive
+side.** These three are verified, not hypothetical:
 
-| Si pasa esto... | ...lo que ves es |
+| If this happens… | …what you see |
 |---|---|
-| `shunt.json` mal escrito (una coma de más) | OpenCode arranca, responde con normalidad, y no dice nada. El sistema simplemente no está |
-| El perfil del worker no existe | `bulk_read` falla, el orquestador lee los ficheros él mismo, te da una respuesta buenísima y te cobra el precio completo |
-| El orquestador aparece en la lista de exentos | Nada se desvía nunca. Y como la exención se comprueba *antes* de escribir telemetría, no queda ni un registro |
+| Malformed `shunt.json` (extra comma) | OpenCode starts, answers normally, says nothing. The system simply is not there |
+| Worker profile does not exist | `bulk_read` fails, the orchestrator reads the files itself, gives a great answer, bills full price |
+| Orchestrator is on the exempt list | Nothing is ever shunted. And because the exemption check runs *before* telemetry, there is no record |
 
-Fíjate en la consecuencia: **una instalación rota y una sin usar se ven
-exactamente igual — un informe vacío.** Nada dentro del sistema puede
-distinguirlas. Para eso está `doctor`, y por eso comprueba el reparto de
-papeles y no solo que los ficheros estén ahí.
+So: **a broken install and an unused one look identical — an empty report.**
+Nothing inside the system can tell them apart. That is what `doctor` is for, and
+why it checks role assignment, not only that files exist.
 
-Salida cuando todo va bien:
-
-```
-[  ok  ] runtime installed, version 3.2.0
-[  ok  ] shunt.json and shunt.local.json are valid JSON
-[  ok  ] orchestrator anthropic/claude-opus-4-8 is not in the exempt list
-[  ok  ] profile google-vertex-reader resolves, credentials present
-[  ok  ] 77 delegations in this repository, 0 failures
-```
-
-Y cuando algo falla, dice qué y cómo se arregla:
+When something is wrong it says what and how to fix it:
 
 ```
 [ FAIL ] vertex credentials expired
@@ -478,99 +438,95 @@ Y cuando algo falla, dice qué y cómo se arregla:
            Fix: gcloud auth application-default login
 ```
 
-### `shunt costs`: la factura en lenguaje humano
+### `shunt costs`: the bill in plain language
 
-Genera un Markdown con lo que llevas gastado en **este** repositorio:
+Writes Markdown for spend in **this** repository:
 
 ```markdown
-## Resumen
+## Summary
 
-- **Gasto total: $12.18** en 96 sesiones
-  - orquestador: $11.95
-  - workers: $0.2297 en 46 llamadas (1.9%)
+- **Total spend: $12.18** across 96 sessions
+  - orchestrator: $11.95
+  - workers: $0.2297 in 46 calls (1.9%)
 ```
 
-Y luego lo desglosa por tipo de token — salida, escritura en caché, lectura de
-caché — porque cada uno se ataca con una herramienta distinta y un total sin
-desglosar no te dice qué hacer a continuación.
+Then splits by token class — output, cache write, cache read — because each is
+attacked by a different tool and an undifferentiated total does not tell you what
+to do next.
 
-El gasto del orquestador sale de la contabilidad de OpenCode, no de una
-estimación nuestra. El del worker se calcula con nuestra telemetría, porque las
-llamadas al worker son HTTP directo y no crean sesión en OpenCode: **no
-aparecen en ninguna factura**. Contar solo lo que OpenCode ve ponía al worker en
-el 0,8% cuando la cifra real es el 2%, y el error caía del lado que favorecía
-al sistema.
-
----
-
-## 8. Cuándo esto NO te sirve
-
-Dicho claro, para que no pierdas el tiempo:
-
-- **Si tu repositorio es pequeño.** Si nada de lo que lees llega a 12 KB, no hay
-  nada que delegar y el sistema no hará nada. No molesta, pero no aporta.
-- **Si lo que te cuesta caro es pensar, no leer.** El orquestador razonando es
-  un tercio de la factura y ahí no se toca nada — y está bien así, porque eso
-  es exactamente lo que estás pagando.
-- **Si no soportas 3–14 segundos de espera** cuando hay una delegación. Ese es
-  el precio en latencia, y lo domina el worker *escribiendo* el resumen, no
-  leyendo la entrada.
-- **Si tu código no puede salir de tu máquina.** Se puede, pero entonces el
-  orquestador también tiene que ser local. `allowedProviders` restringe a los
-  workers, **no al orquestador**: el modelo del orquestador lo elige OpenCode y
-  el sistema no lo controla. `doctor` te avisa si estás en ese estado creyendo
-  que estás protegido.
+Orchestrator spend comes from OpenCode’s accounting, not our estimate. Worker
+spend is computed from our telemetry, because worker calls are direct HTTP and
+create no OpenCode session: **they do not appear on any invoice**. Counting only
+what OpenCode sees put the worker at 0.8% when the real figure is ~2%, and the
+error flattered the system.
 
 ---
 
-## 9. Problemas típicos
+## 8. When this does NOT help you
 
-**"No noto ninguna diferencia."**
-Ejecuta `shunt doctor`. Si dice que hay 0 delegaciones, o está mal montado o no
-has pedido nada lo bastante grande. Las dos cosas se ven igual, y `doctor` es lo
-único que las distingue.
+Said plainly, so you do not waste time:
 
-**"Me ha salido más caro."**
-Mira `shunt costs`. Si hay delegaciones fallidas, ahí está: cuando una
-delegación falla, el trabajo vuelve al modelo caro en silencio. Y si el worker
-está escribiendo resúmenes más largos que el código que resume, `shunt stats`
-lo enseña como un ahorro negativo.
-
-**"El worker se equivoca."**
-Se equivocará algunas veces. Cada recibo lo dice, y las instrucciones del
-orquestador son explícitas en que lo que dice el worker es **una pista que hay
-que verificar, no una conclusión**. Se comprueba la sintaxis, se limita dónde
-puede escribir, se hace copia de seguridad y se revierte si no compila — pero
-nada de eso es una revisión de código.
-
-**"Quiero cambiar de modelo."**
-`shunt config` otra vez. Reescribe las instrucciones, la aritmética y las
-exenciones para que sigan cuadrando entre sí. Tus `writePaths`, `editPaths` y
-tu política de nube sobreviven, y `shunt update` nunca toca `shunt.json`.
-
-**"He tocado shunt.json a mano y ahora no va."**
-`shunt doctor` te dice en qué línea. El fallo más común es que el sistema no
-carga y no avisa de nada.
+- **If your repository is small.** If nothing you read reaches ~12 KB, there is
+  nothing to delegate and the system will do nothing. It does not hurt; it does
+  not help.
+- **If what costs money is thinking, not reading.** Orchestrator reasoning is
+  about a third of the bill and is untouched — correctly, because that is what
+  you are paying for.
+- **If you cannot tolerate 3–14 seconds** when a delegation runs. That latency
+  is dominated by the worker *writing* the summary, not reading the input.
+- **If your code must not leave the machine.** Possible, but then the
+  orchestrator must be local too. `allowedProviders` binds workers, **not** the
+  orchestrator: OpenCode chooses the orchestrator model and this system does not
+  override it. `doctor` warns if you are in that state thinking you are protected.
 
 ---
 
-## 10. Resumen en cinco líneas
+## 9. Typical problems
 
-1. Instalas con `pipx install opencode-shunt`, y en tu proyecto: `shunt init`,
-   `shunt config`, `shunt doctor`.
-2. Trabajas igual que antes: `opencode --agent orchestrator`.
-3. Cuando algo es voluminoso, va al worker barato solo. Tú no haces nada.
-4. `shunt costs` te dice qué has gastado; `shunt doctor`, si está funcionando.
-5. Lo que ahorras es la parte voluminosa. Lo que se piensa se sigue pagando, y
-   así debe ser.
+**“I don’t notice any difference.”**
+Run `shunt doctor`. If it says 0 delegations, either it is mis-installed or you
+have not asked for anything large enough. Those two look the same; `doctor` is
+what distinguishes them.
+
+**“It got more expensive.”**
+Look at `shunt costs`. If there are failed delegations, that is why: when a
+delegation fails, the work silently returns to the expensive model. And if the
+worker is writing summaries longer than the code it summarises, `shunt stats`
+shows that as negative saving.
+
+**“The worker is wrong.”**
+It will be, sometimes. Every receipt says so, and the orchestrator prompt is
+explicit that worker output is **a lead to verify, not a conclusion**. Syntax is
+checked, write reach is limited, backups are taken and bad edits are refused —
+but none of that is a code review.
+
+**“I want to change model.”**
+`shunt config` again. It rewrites prompts, economics and exemptions so they stay
+in step. Your `writePaths`, `editPaths` and cloud policy survive, and
+`shunt update` never overwrites `shunt.json`.
+
+**“I edited shunt.json by hand and now it doesn’t work.”**
+`shunt doctor` tells you where. The most common failure is that the system does
+not load and says nothing.
 
 ---
 
-## Para seguir
+## 10. Five-line summary
 
-- [README](README.md) — resumen y cifras medidas
-- [Cómo funciona](docs/COMO_FUNCIONA.md) — el sistema completo, con más detalle
-- [Resultados reales](docs/RESULTADOS_PRUEBA_REAL.md) — una app construida con
-  esto, lo que costó y los cuatro defectos que solo aparecieron con uso real
-- [Próximas mejoras](docs/PROXIMAS_MEJORAS.md) — lo que falta, y lo que se
-  descartó después de medirlo
+1. Install with `pipx install opencode-shunt` (or `npx`), then in your project:
+   `shunt init`, `shunt config`, `shunt doctor`.
+2. Work as before: `opencode --agent orchestrator`.
+3. When something is bulky, it goes to the cheap worker alone. You do nothing.
+4. `shunt costs` tells you what you spent; `shunt doctor`, whether it is working.
+5. What you save is the bulk. Judgement is still paid for, and that is correct.
+
+---
+
+## Where next
+
+- [README](README.md) — overview and measured figures
+- [How it works](docs/HOW_IT_WORKS.md) — the full system in more detail
+- [Real results](docs/REAL_RESULTS.md) — an app built with this, what it cost, and
+  the silent defects that only showed up in real use
+- [Roadmap](docs/ROADMAP.md) — what is missing, and what was discarded after measuring
+- [Distribution](docs/DISTRIBUTION.md) — publishing to PyPI and npm

@@ -1,3 +1,5 @@
+English: [DISTRIBUTION.md](DISTRIBUTION.md)
+
 # Distribuir este proyecto
 
 Tres caminos, y el orden importa: el primero es el único obligatorio, y los

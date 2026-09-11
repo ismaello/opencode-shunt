@@ -42,25 +42,25 @@ def test_the_split_reconciles_with_what_was_billed():
     """
     one = session(cost=0.0, input=1_000_000, output=1_000_000, cache_read=0, cache_write=0)
     split = split_spend(one)
-    assert round(split["entrada"], 2) == 5.0
-    assert round(split["salida"], 2) == 25.0
+    assert round(split["input"], 2) == 5.0
+    assert round(split["output"], 2) == 25.0
 
 
 def test_output_is_never_folded_into_input():
     """Output bills at five times input, so a total of the two means nothing."""
     split = split_spend(session())
-    assert set(split) == {"entrada", "salida", "cache write", "cache read"}
+    assert set(split) == {"input", "output", "cache write", "cache read"}
 
 
 def test_an_unpriced_model_is_assumed_expensive():
     """Understating spend is the misleading direction: it makes this look unneeded."""
     unknown = split_spend(session(model="a-model-from-the-future", output=1_000_000))
-    assert unknown["salida"] == 25.0
+    assert unknown["output"] == 25.0
 
 
 def test_a_cheap_orchestrator_is_priced_cheaply():
-    expensive = split_spend(session(model="claude-opus-4-8"))["salida"]
-    cheap = split_spend(session(model="gemini-2.5-pro"))["salida"]
+    expensive = split_spend(session(model="claude-opus-4-8"))["output"]
+    cheap = split_spend(session(model="gemini-2.5-pro"))["output"]
     assert cheap < expensive
 
 
@@ -128,7 +128,7 @@ def test_unpriced_calls_are_admitted_in_the_report():
         "scope",
         None,
     )
-    assert "no se han podido tarifar" in document
+    assert "could not be priced" in document
 
 
 def test_the_summary_shows_the_worker_bill_beside_the_orchestrator_one():
@@ -139,8 +139,8 @@ def test_the_summary_shows_the_worker_bill_beside_the_orchestrator_one():
         None,
         "gemini-2.5-flash",
     )
-    head = document.split("## Por modelo")[0]
-    assert "orquestador:" in head and "workers:" in head
+    head = document.split("## By model")[0]
+    assert "orchestrator:" in head and "workers:" in head
     # The total has to include both, or it is the same omission again.
     assert "$1.30" in head
 
@@ -167,8 +167,8 @@ def test_savings_keep_input_and_output_apart():
         {"tool": "delegate_edit", "written_chars": 2_000, "returned_chars": 200, "metric_version": 2},
     ]
     by_kind = {row["label"]: row for row in savings(rows)}
-    assert by_kind["lectura delegada"]["is_output"] is False
-    assert by_kind["ediciones delegadas"]["is_output"] is True
+    assert by_kind["delegated reads"]["is_output"] is False
+    assert by_kind["delegated edits"]["is_output"] is True
 
 
 def test_edits_measured_by_the_old_metric_are_left_out():
@@ -186,13 +186,13 @@ def test_telemetry_without_the_fields_is_skipped_rather_than_counted_as_zero():
 
 def test_an_empty_repository_gets_an_explanation_not_a_traceback():
     document = render([], [], "`/tmp/nuevo`", None)
-    assert "No hay ninguna sesión" in document
-    assert "directorio donde se lanzaron" in document
+    assert "No sessions recorded" in document
+    assert "where they were started" in document
 
 
 def test_the_document_leads_with_the_number_somebody_asked_for():
     document = render([session()], [], "`/tmp/repo`", None)
-    assert "Gasto total" in document.split("## Por modelo")[0]
+    assert "Total spend" in document.split("## By model")[0]
 
 
 def test_failed_delegations_are_surfaced():
@@ -203,7 +203,7 @@ def test_failed_delegations_are_surfaced():
         "`/tmp/repo`",
         None,
     )
-    assert "Delegaciones que fallaron" in document
+    assert "Failed delegations" in document
     assert "404" in document
 
 
@@ -212,6 +212,6 @@ def test_a_title_with_a_pipe_does_not_break_the_table():
     document = render(
         [session(title="arreglar a | b"), session(id="ses_2")], [], "`/tmp/repo`", None
     )
-    rows = [line for line in document.splitlines() if line.startswith("| 10/09")]
+    rows = [line for line in document.splitlines() if line.startswith("| 09-10")]
     assert rows, "the per-session table did not render"
     assert all(row.count("|") == 6 for row in rows), rows
