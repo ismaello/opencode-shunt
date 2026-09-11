@@ -311,12 +311,11 @@ Primary docs are in English. Spanish originals are kept as `*.es.md`.
 - [Results from a real build](docs/REAL_RESULTS.md) — a FastAPI app built with
   it, what it cost, and the silent defects that only showed up under real use
   ([español](docs/RESULTADOS_PRUEBA_REAL.es.md))
-  measuring ([español](docs/PROXIMAS_MEJORAS.es.md))
+- [What is next](docs/PROXIMAS_MEJORAS.es.md) — what is missing and what was
+  discarded after measuring (Spanish)
 - [Distribution](docs/DISTRIBUTION.md) — publishing to PyPI and npm, and what
   was verified before calling it ready
   ([español](docs/DISTRIBUCION.es.md))
-  summary lives in the roadmap)
-  (Spanish)
 
 ## Credit
 
