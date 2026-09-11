@@ -500,6 +500,5 @@ environment variable holding a key, never its value.
 - [Tutorial](../TUTORIAL.md) — worked flows showing what happens to a request
 - [README](../README.md) — installation and quick overview
 - [Distribution](DISTRIBUTION.md) — publishing to PyPI and npm
-- [Roadmap](ROADMAP.md) — what is missing and what it would take
 - [Real results](REAL_RESULTS.md) — a real build, what it cost, and defects
   that only showed up under use

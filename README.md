@@ -247,7 +247,7 @@ looked obviously right and would have cost a few dollars to test; the replay
 showed it would have touched 5 of 81 reads and been worth 8.6% of three
 sessions, against a *measured* 84% penalty the last time this guard was
 hardened. The change was dropped, and [the reasoning is
-recorded](docs/ROADMAP.md) because it will look like a good idea again.
+recorded](docs/PROXIMAS_MEJORAS.es.md) because it will look like a good idea again.
 
 ## Honest limits
 
@@ -311,14 +311,11 @@ Primary docs are in English. Spanish originals are kept as `*.es.md`.
 - [Results from a real build](docs/REAL_RESULTS.md) — a FastAPI app built with
   it, what it cost, and the silent defects that only showed up under real use
   ([español](docs/RESULTADOS_PRUEBA_REAL.es.md))
-- [Roadmap](docs/ROADMAP.md) — what is missing, and what was discarded after
   measuring ([español](docs/PROXIMAS_MEJORAS.es.md))
 - [Distribution](docs/DISTRIBUTION.md) — publishing to PyPI and npm, and what
   was verified before calling it ready
   ([español](docs/DISTRIBUCION.es.md))
-- [Work plan](docs/PLAN.es.md) — post-review execution plan (Spanish; English
   summary lives in the roadmap)
-- [How it was built](docs/PLAN_EJECUCION.md) — playbook from the original build
   (Spanish)
 
 ## Credit

@@ -1,5 +1,3 @@
-English: [ROADMAP.md](ROADMAP.md)
-
 # Próximas mejoras
 
 Ordenadas por lo que aportarían frente a lo que cuestan. Cada una dice qué

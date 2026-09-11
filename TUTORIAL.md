@@ -528,5 +528,4 @@ not load and says nothing.
 - [How it works](docs/HOW_IT_WORKS.md) — the full system in more detail
 - [Real results](docs/REAL_RESULTS.md) — an app built with this, what it cost, and
   the silent defects that only showed up in real use
-- [Roadmap](docs/ROADMAP.md) — what is missing, and what was discarded after measuring
 - [Distribution](docs/DISTRIBUTION.md) — publishing to PyPI and npm
